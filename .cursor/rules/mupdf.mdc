@@ -1,0 +1,14 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+- Assume that MuPDF is a C library.
+- Assume that MuPDF is a library for PDF processing.
+- Assume that MuPDF is a library for PDF rendering.
+- Assume that MuPDF is a library for PDF manipulation.
+- Assume that MuPDF is a library for PDF creation.
+- Assume that MuPDF is a library for PDF conversion.
+- Assume that MuPDF is a library for PDF analysis.
+- Assume that MuPDF is a library for PDF optimization.
+- Use the MuPDF library cloned at ./third_party/mupdf for development.
