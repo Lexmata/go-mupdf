@@ -620,7 +620,7 @@ func TestNewFeature_Success(t *testing.T) {
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
 
 MuPDF is licensed under the [GNU Affero General Public License v3](third_party/mupdf/COPYING).
 
