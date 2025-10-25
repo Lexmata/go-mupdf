@@ -28,19 +28,35 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 
 ### Installation
 
-1. **Clone the repository**:
+#### Option 1: Go Module (Recommended)
+
+For most users, install directly using Go modules:
+
 ```bash
-git clone https://bitbucket.org/lexmata/go-mupdf.git
-cd go-mupdf
+go get bitbucket.org/lexmata/go-mupdf@latest
 ```
 
-2. **Initialize and build MuPDF submodule**:
+**Note**: This project requires CGO and system dependencies. See [System Dependencies](#system-dependencies) below.
+
+#### Option 2: From Source
+
+For development or custom builds:
+
 ```bash
-git submodule update --init --recursive
-cd third_party/mupdf
-make
-cd ../..
+# Clone with submodules
+git clone --recurse-submodules https://bitbucket.org/lexmata/go-mupdf.git
+cd go-mupdf
+
+# Build MuPDF library
+cd third_party/mupdf && make && cd ../..
+
+# Test the installation
+go test ./pkg/mupdf/
 ```
+
+#### System Dependencies
+
+This library requires a C compiler and system libraries:
 
 3. **Build and test the Go wrapper**:
 ```bash

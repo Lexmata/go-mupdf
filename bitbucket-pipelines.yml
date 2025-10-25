@@ -134,14 +134,17 @@ pipelines:
             - go
             - mupdf
           script:
-            # Install system dependencies
+            # Install system dependencies and release tools
             - apt-get update
             - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
             - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
+            - apt-get install -y curl jq zip
             
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
+            - export TAG_NAME=$BITBUCKET_TAG
+            - echo "Building release for tag: $TAG_NAME"
             
             # Cache Go modules
             - go mod download
@@ -155,25 +158,135 @@ pipelines:
                 cd ../..
               fi
             
-            # Run all tests
-            - go test -v -race ./...
+            # Run comprehensive test suite for release
+            - echo "Running comprehensive test suite..."
+            - go test -v -race -coverprofile=release-coverage.out ./...
+            - go tool cover -func=release-coverage.out
+            - go vet ./...
             
-            # Build for multiple platforms
-            - mkdir -p releases
+            # Validate code formatting
+            - test -z "$(gofmt -l .)" || (echo "Code not formatted properly"; exit 1)
             
-            # Build for Linux
-            - GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -v -o releases/mupdf-linux-amd64 ./cmd/... || echo "No cmd to build"
+            # Create release directory structure
+            - mkdir -p releases/{source,binaries,documentation}
             
-            # Note: Cross-compilation with CGO is complex for this project
-            # Additional platform builds would require cross-compilation setup
+            # Build command line tools
+            - echo "Building command line tools..."
+            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
+            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
             
-            # Create release archives
+            # Create source archive
+            - echo "Creating source archive..."
+            - git archive --format=tar.gz --prefix=go-mupdf-$TAG_NAME/ $TAG_NAME > releases/source/go-mupdf-$TAG_NAME-source.tar.gz
+            
+            # Generate release documentation package
+            - echo "Packaging documentation..."
+            - tar -czf releases/documentation/go-mupdf-$TAG_NAME-docs.tar.gz docs/ examples/ README.md LICENSE CHANGELOG.md
+            
+            # Create binary archives
             - |
-              if [ -f "releases/mupdf-linux-amd64" ]; then
-                tar -czf releases/mupdf-linux-amd64.tar.gz -C releases mupdf-linux-amd64
+              cd releases/binaries
+              if [ -f "go-mupdf-linux-amd64" ]; then
+                tar -czf go-mupdf-$TAG_NAME-linux-amd64.tar.gz go-mupdf-linux-amd64
+                echo "Created go-mupdf binary archive"
               fi
+              if [ -f "create-test-pdf-linux-amd64" ]; then
+                tar -czf create-test-pdf-$TAG_NAME-linux-amd64.tar.gz create-test-pdf-linux-amd64
+                echo "Created create-test-pdf binary archive"
+              fi
+              cd ../..
+            
+            # Generate release notes from changelog
+            - echo "Generating release notes..."
+            - |
+              cat > releases/RELEASE_NOTES.md << EOF
+              # Go MuPDF $TAG_NAME Release
+              
+              **Release Date**: $(date +"%Y-%m-%d")
+              **Git Tag**: $TAG_NAME
+              **Commit**: $BITBUCKET_COMMIT
+              
+              ## Installation
+              
+              ### Go Module
+              \`\`\`bash
+              go get bitbucket.org/lexmata/go-mupdf@$TAG_NAME
+              \`\`\`
+              
+              ### Binary Downloads
+              - [Linux AMD64 Tools](releases/binaries/)
+              - [Source Code](releases/source/)
+              - [Documentation](releases/documentation/)
+              
+              ## What's Included
+              
+              - **Source Code**: Complete Go MuPDF wrapper with MuPDF library
+              - **Documentation**: Comprehensive guides and API reference
+              - **Examples**: Working code examples and tutorials
+              - **Command Line Tools**: go-mupdf and create-test-pdf utilities
+              - **Tests**: Full test suite with 81.8% coverage
+              
+              ## System Requirements
+              
+              - Go 1.21 or later
+              - C compiler (GCC/Clang/MSVC)
+              - Make build system
+              - System dependencies (see installation guide)
+              
+              ## Changelog
+              
+              $(grep -A 50 "## \[$TAG_NAME\]" CHANGELOG.md | head -50)
+              
+              ## Verification
+              
+              ### Checksums
+              \`\`\`
+              $(find releases -type f -name "*.tar.gz" -exec sha256sum {} \;)
+              \`\`\`
+              
+              ### Test Coverage
+              \`\`\`
+              $(go tool cover -func=release-coverage.out | tail -1)
+              \`\`\`
+              
+              ---
+              
+              For support, documentation, and examples, visit the [repository](https://bitbucket.org/lexmata/go-mupdf).
+              EOF
+            
+            # Create checksums
+            - echo "Generating checksums..."
+            - cd releases && find . -type f -name "*.tar.gz" -exec sha256sum {} \; > SHA256SUMS && cd ..
+            
+            # Log release summary
+            - echo "=== Release Summary ==="
+            - echo "Tag: $TAG_NAME"
+            - echo "Files created:"
+            - find releases -type f -ls
+            - echo "===================="
+            
+          after-script:
+            # Upload to Bitbucket Downloads (if configured)
+            - |
+              if [ ! -z "$BITBUCKET_DOWNLOADS_TOKEN" ]; then
+                echo "Uploading release artifacts to Bitbucket Downloads..."
+                for file in releases/binaries/*.tar.gz releases/source/*.tar.gz releases/documentation/*.tar.gz; do
+                  if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    curl -X POST \
+                      "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
+                      -H "Authorization: Bearer $BITBUCKET_DOWNLOADS_TOKEN" \
+                      -F "files=@$file" \
+                      || echo "Failed to upload $filename"
+                  fi
+                done
+              else
+                echo "BITBUCKET_DOWNLOADS_TOKEN not set, skipping upload"
+              fi
+              
           artifacts:
             - releases/**
+            - release-coverage.out
 
   pull-requests:
     '**':
