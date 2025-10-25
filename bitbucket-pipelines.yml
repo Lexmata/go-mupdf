@@ -1,0 +1,219 @@
+image: golang:1.21
+
+definitions:
+  caches:
+    mupdf: third_party/mupdf/build/
+
+  services:
+    docker:
+      memory: 2048
+
+pipelines:
+  default:
+    - step:
+        name: Build and Test
+        caches:
+          - go
+          - mupdf
+        script:
+          # Install system dependencies
+          - apt-get update
+          - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
+          - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
+          
+          # Set up Go environment
+          - export GO111MODULE=on
+          - export CGO_ENABLED=1
+          - export GOOS=linux
+          - export GOARCH=amd64
+          
+          # Cache Go modules
+          - go mod download
+          
+          # Build MuPDF library if not cached
+          - |
+            if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
+              echo "Building MuPDF library..."
+              cd third_party/mupdf
+              make -j$(nproc) libs
+              cd ../..
+            else
+              echo "Using cached MuPDF library"
+            fi
+          
+          # Verify MuPDF build
+          - ls -la third_party/mupdf/build/release/ || echo "Build directory not found"
+          
+          # Run Go tests
+          - go test -v ./...
+          
+          # Run specific package tests with coverage
+          - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
+          
+          # Generate coverage report
+          - go tool cover -html=coverage.out -o coverage.html
+        artifacts:
+          - coverage.html
+          - coverage.out
+
+  branches:
+    main:
+      - step:
+          name: Build, Test and Deploy
+          caches:
+            - go
+            - mupdf
+          script:
+            # Install system dependencies
+            - apt-get update
+            - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
+            - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
+            
+            # Set up Go environment
+            - export GO111MODULE=on
+            - export CGO_ENABLED=1
+            - export GOOS=linux
+            - export GOARCH=amd64
+            
+            # Cache Go modules
+            - go mod download
+            
+            # Build MuPDF library
+            - |
+              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
+                echo "Building MuPDF library..."
+                cd third_party/mupdf
+                make -j$(nproc) libs
+                cd ../..
+              else
+                echo "Using cached MuPDF library"
+              fi
+            
+            # Run comprehensive tests
+            - go test -v -race -coverprofile=coverage.out ./...
+            
+            # Run benchmarks
+            - go test -v -bench=. -benchmem ./pkg/mupdf/
+            
+            # Check code formatting
+            - test -z "$(gofmt -l .)" || (echo "Code not formatted properly"; gofmt -l .; exit 1)
+            
+            # Run go vet
+            - go vet ./...
+            
+            # Run staticcheck if available
+            - |
+              if command -v staticcheck >/dev/null 2>&1; then
+                staticcheck ./...
+              else
+                echo "Staticcheck not available, skipping"
+              fi
+            
+            # Generate coverage report
+            - go tool cover -html=coverage.out -o coverage.html
+            - go tool cover -func=coverage.out
+            
+            # Build examples or binaries if they exist
+            - |
+              if [ -d "cmd" ]; then
+                echo "Building command line tools..."
+                go build -v ./cmd/...
+              fi
+          artifacts:
+            - coverage.html
+            - coverage.out
+          after-script:
+            # Cleanup
+            - rm -f coverage.out
+
+  tags:
+    v*:
+      - step:
+          name: Build, Test and Release
+          caches:
+            - go
+            - mupdf
+          script:
+            # Install system dependencies
+            - apt-get update
+            - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
+            - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
+            
+            # Set up Go environment
+            - export GO111MODULE=on
+            - export CGO_ENABLED=1
+            
+            # Cache Go modules
+            - go mod download
+            
+            # Build MuPDF library
+            - |
+              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
+                echo "Building MuPDF library..."
+                cd third_party/mupdf
+                make -j$(nproc) libs
+                cd ../..
+              fi
+            
+            # Run all tests
+            - go test -v -race ./...
+            
+            # Build for multiple platforms
+            - mkdir -p releases
+            
+            # Build for Linux
+            - GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -v -o releases/mupdf-linux-amd64 ./cmd/... || echo "No cmd to build"
+            
+            # Note: Cross-compilation with CGO is complex for this project
+            # Additional platform builds would require cross-compilation setup
+            
+            # Create release archives
+            - |
+              if [ -f "releases/mupdf-linux-amd64" ]; then
+                tar -czf releases/mupdf-linux-amd64.tar.gz -C releases mupdf-linux-amd64
+              fi
+          artifacts:
+            - releases/**
+
+  pull-requests:
+    '**':
+      - step:
+          name: PR Build and Test
+          caches:
+            - go
+            - mupdf
+          script:
+            # Install system dependencies
+            - apt-get update
+            - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
+            - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
+            
+            # Set up Go environment
+            - export GO111MODULE=on
+            - export CGO_ENABLED=1
+            
+            # Cache Go modules
+            - go mod download
+            
+            # Build MuPDF library
+            - |
+              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
+                echo "Building MuPDF library..."
+                cd third_party/mupdf
+                make -j$(nproc) libs
+                cd ../..
+              fi
+            
+            # Run tests with race detection
+            - go test -v -race ./...
+            
+            # Check code formatting
+            - test -z "$(gofmt -l .)" || (echo "Code not formatted properly"; gofmt -l .; exit 1)
+            
+            # Run go vet
+            - go vet ./...
+            
+            # Generate coverage for changed files
+            - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
+          artifacts:
+            - pr-coverage.out
