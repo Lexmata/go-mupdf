@@ -33,6 +33,17 @@ else
         # Try to get the branch name from the merge head
         MERGE_BRANCH=$(git name-rev --name-only "$MERGE_HEAD" 2>/dev/null | sed 's|^remotes/origin/||' | sed 's|^origin/||' || echo "unknown")
         echo -e "${BLUE}Merge in progress from: ${MERGE_BRANCH}${NC}"
+    else
+        # Check if HEAD is a merge commit (has multiple parents)
+        if git rev-parse --verify 'HEAD^2' >/dev/null 2>&1; then
+            IS_MERGE=true
+            # Get the second parent (the merged branch)
+            MERGE_HEAD=$(git rev-parse 'HEAD^2' 2>/dev/null)
+            if [ -n "$MERGE_HEAD" ]; then
+                MERGE_BRANCH=$(git name-rev --name-only "$MERGE_HEAD" 2>/dev/null | sed 's|^remotes/origin/||' | sed 's|^origin/||' || echo "unknown")
+                echo -e "${BLUE}Merge commit detected from: ${MERGE_BRANCH}${NC}"
+            fi
+        fi
     fi
 
     # Git-flow branch patterns
@@ -47,13 +58,13 @@ else
     # Main branch protection
     if is_main; then
         if [ "$IS_MERGE" = true ]; then
-            # Check if merge is from develop
-            if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop)"; then
-                echo -e "${GREEN}✅ Merge from develop to main is allowed${NC}"
+            # Check if merge is from develop or a release branch
+            if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop|^release/|^remotes/origin/release/)"; then
+                echo -e "${GREEN}✅ Merge from ${MERGE_BRANCH} to main is allowed${NC}"
             else
-                echo -e "${RED}❌ Main branch can only receive merges from develop!${NC}"
+                echo -e "${RED}❌ Main branch can only receive merges from develop or release branches!${NC}"
                 echo "   Current merge is from: $MERGE_BRANCH"
-                echo "   Only merges from 'develop' are allowed to main"
+                echo "   Only merges from 'develop' or 'release/*' branches are allowed to main"
                 exit 1
             fi
         else
