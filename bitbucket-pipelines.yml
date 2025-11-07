@@ -58,9 +58,9 @@ definitions:
         caches:
           - go
         script:
-          # Install MuPDF and pkg-config from package manager
+          # Install MuPDF and all required dependencies from package manager
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config
+          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
 
           # Set up Go environment
           - export GO111MODULE=on
@@ -113,7 +113,7 @@ pipelines:
           script:
             # Install MuPDF from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev
+            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
 
             # Set up Go environment
             - export GO111MODULE=on
@@ -167,7 +167,7 @@ pipelines:
           script:
             # Install MuPDF from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev
+            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
 
             # Set up Go environment
             - export GO111MODULE=on
@@ -200,7 +200,7 @@ pipelines:
           script:
             # Install MuPDF and release tools from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev curl jq zip
+            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev curl jq zip
 
             # Set up Go environment
             - export GO111MODULE=on
@@ -342,7 +342,7 @@ pipelines:
             script:
               # Install MuPDF from package manager
               - apt-get update
-              - apt-get install -y libmupdf-dev
+              - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
 
               # Set up Go environment
               - export GO111MODULE=on
