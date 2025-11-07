@@ -204,7 +204,7 @@ else
                 # Capture both stdout and stderr, filter out MuPDF warnings
                 TEST_OUTPUT=$(go test -short "$pkg" 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
                 TEST_EXIT_CODE=${PIPESTATUS[0]}
-                
+
                 if [ $TEST_EXIT_CODE -eq 0 ]; then
                     echo -e "      ${GREEN}✅ $pkg tests passed${NC}"
                 else
@@ -222,7 +222,7 @@ else
         # Capture test output and filter out MuPDF warnings
         TEST_OUTPUT=$(go test -short ./pkg/mupdf/ 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
         TEST_EXIT_CODE=${PIPESTATUS[0]}
-        
+
         if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✅ Package tests passed${NC}"
         else
