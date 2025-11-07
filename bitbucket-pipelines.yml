@@ -16,7 +16,7 @@ definitions:
         script:
           # Install MuPDF and all required dependencies (needed for go vet with CGO)
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz0-dev libgumbo-dev libmujs-dev
 
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -60,7 +60,7 @@ definitions:
         script:
           # Install MuPDF and all required dependencies from package manager
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz0-dev libgumbo-dev libmujs-dev
 
           # Set up Go environment
           - export GO111MODULE=on
