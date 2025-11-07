@@ -3,9 +3,6 @@ image: golang:1.21
 definitions:
   caches:
     mupdf:
-      key:
-        files:
-          - third_party/mupdf/Makefile
       path: third_party/mupdf/build/
 
   services:
