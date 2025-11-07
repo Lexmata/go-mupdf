@@ -190,11 +190,15 @@ else
         for pkg in $PACKAGES; do
             if [ -d "$pkg" ]; then
                 echo "   Testing package: $pkg"
-                if go test -short "$pkg" >/dev/null 2>&1; then
+                # Capture both stdout and stderr, filter out MuPDF warnings
+                TEST_OUTPUT=$(go test -short "$pkg" 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
+                TEST_EXIT_CODE=${PIPESTATUS[0]}
+                
+                if [ $TEST_EXIT_CODE -eq 0 ]; then
                     echo -e "      ${GREEN}✅ $pkg tests passed${NC}"
                 else
                     echo -e "      ${RED}❌ Tests failed in $pkg${NC}"
-                    go test -short "$pkg" 2>&1 | grep -v "^third_party/" | head -10 || true
+                    echo "$TEST_OUTPUT" | head -20
                     FAILED=1
                 fi
             fi
@@ -204,11 +208,15 @@ else
     # Also run a quick test on the main package
     if [ -d "pkg/mupdf" ]; then
         echo "   Running quick tests on pkg/mupdf..."
-        if go test -short ./pkg/mupdf/ >/dev/null 2>&1; then
+        # Capture test output and filter out MuPDF warnings
+        TEST_OUTPUT=$(go test -short ./pkg/mupdf/ 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✅ Package tests passed${NC}"
         else
             echo -e "${RED}❌ Package tests failed${NC}"
-            go test -short ./pkg/mupdf/ 2>&1 | grep -v "^third_party/" | head -20 || true
+            echo "$TEST_OUTPUT" | head -20
             FAILED=1
         fi
     fi

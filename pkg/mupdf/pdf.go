@@ -67,8 +67,8 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
 
     fz_try(ctx) {
         // pdf_bound_page takes ctx, page, and box type
-        // Use PDF_MEDIA_BOX (0) as the default box type
-        rect = pdf_bound_page(ctx, page, 0);
+        // Use FZ_MEDIA_BOX as the default box type
+        rect = pdf_bound_page(ctx, page, FZ_MEDIA_BOX);
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
