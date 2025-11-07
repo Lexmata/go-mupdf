@@ -58,7 +58,7 @@ echo ""
 # Function to run lint step
 run_lint() {
     echo -e "${GREEN}Running lint step...${NC}"
-    docker run --rm -it \
+    docker run --rm \
         -v "${MOUNT_DIR}:/workspace" \
         -w /workspace \
         "${IMAGE}" \
@@ -80,6 +80,7 @@ run_lint() {
                 echo '✅ All files are properly formatted'
             fi
             
+            export CGO_ENABLED=1
             echo 'Running go vet...'
             go vet ./...
             
@@ -100,7 +101,7 @@ run_lint() {
 # Function to run test step
 run_test() {
     echo -e "${GREEN}Running test step...${NC}"
-    docker run --rm -it \
+    docker run --rm \
         -v "${MOUNT_DIR}:/workspace" \
         -w /workspace \
         "${IMAGE}" \
@@ -108,12 +109,18 @@ run_test() {
             set -e
             apt-get update -qq
             apt-get install -y -qq libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev > /dev/null
-            
+            ldconfig
+            echo 'Checking installed libraries...'
+            find /usr/lib -name '*harfbuzz*' 2>/dev/null | head -5
+            find /usr/lib -name '*mupdf*' 2>/dev/null | head -5
+            find /usr/lib -name '*extract*' 2>/dev/null | head -5
+            pkg-config --libs harfbuzz 2>&1 || echo 'pkg-config harfbuzz failed'
+            pkg-config --libs mupdf 2>&1 || echo 'pkg-config mupdf failed'
             export GO111MODULE=on
             export CGO_ENABLED=1
             export GOOS=linux
             export GOARCH=amd64
-            
+            export GOTOOLCHAIN=local
             echo 'Running tests with race detection...'
             go test -v -race ./...
             
