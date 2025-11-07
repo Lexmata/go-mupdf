@@ -110,10 +110,10 @@ pipelines:
       - parallel:
         - step: *lint
         - step:
-          name: Run Tests and Benchmarks
-          caches:
-            - go
-          script:
+            name: Run Tests and Benchmarks
+            caches:
+              - go
+            script:
             # Install MuPDF from package manager
             - apt-get update
             - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
