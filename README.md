@@ -1,7 +1,7 @@
 # Go MuPDF Wrapper
 
 [![Go Reference](https://pkg.go.dev/badge/bitbucket.org/lexmata/go-mupdf.svg)](https://pkg.go.dev/bitbucket.org/lexmata/go-mupdf)
-[![codecov](https://codecov.io/gh/lexmata/go-mupdf/branch/main/graph/badge.svg)](https://codecov.io/gh/lexmata/go-mupdf)
+[![codecov](https://codecov.io/bitbucket/lexmata/go-mupdf/graph/badge.svg?token=7HHYVA0FUA)](https://codecov.io/bitbucket/lexmata/go-mupdf)
 [![Go Report Card](https://goreportcard.com/badge/bitbucket.org/lexmata/go-mupdf)](https://goreportcard.com/report/bitbucket.org/lexmata/go-mupdf)
 
 A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), providing powerful PDF processing capabilities with excellent memory management and robust error handling.
@@ -11,7 +11,7 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 - 📄 **PDF Document Operations**: Open, read, and manipulate PDF files
 - 📝 **Page Management**: Load pages, extract bounds, and handle page operations
 - 🔤 **Text Extraction**: Extract text content from PDF pages
-- 📋 **PDF Creation**: Create new PDF documents and add pages programmatically  
+- 📋 **PDF Creation**: Create new PDF documents and add pages programmatically
 - 🧠 **Memory Safe**: Comprehensive memory management with automatic cleanup
 - ⚡ **High Performance**: Built on MuPDF's fast C library
 - 🔒 **Thread Safe**: Concurrent operations supported
@@ -108,7 +108,7 @@ func main() {
 
         // Get page bounds
         bounds := page.Bound()
-        fmt.Printf("Page %d: %.1f x %.1f points\n", i+1, 
+        fmt.Printf("Page %d: %.1f x %.1f points\n", i+1,
             bounds.X1-bounds.X0, bounds.Y1-bounds.Y0)
 
         // Extract text
@@ -165,7 +165,7 @@ func main() {
             continue
         }
         defer page.Close()
-        
+
         log.Printf("Added page %d: %.0fx%.0f", i+1, size.width, size.height)
     }
 
@@ -219,7 +219,7 @@ func main() {
             continue
         }
         defer obj.Drop()
-        
+
         log.Printf("Created PDF object %d: %T", i, value)
     }
 }
@@ -239,7 +239,7 @@ func NewContext() (*Context, error)
 func (ctx *Context) Drop()
 ```
 
-#### Document  
+#### Document
 Represents a PDF document for reading operations.
 
 ```go
@@ -512,7 +512,7 @@ go clean -cache
 go build ./pkg/mupdf/
 ```
 
-**Problem**: `undefined reference to 'pdf_*'` 
+**Problem**: `undefined reference to 'pdf_*'`
 
 **Solution**: MuPDF libraries not found:
 ```bash
@@ -582,7 +582,7 @@ We welcome contributions! Please follow these guidelines:
 
 ### Code Standards
 
-- **Go formatting**: Use `go fmt` 
+- **Go formatting**: Use `go fmt`
 - **Linting**: Use `go vet` and `golangci-lint`
 - **Testing**: Maintain >80% test coverage
 - **Documentation**: Add godoc comments for public APIs
@@ -631,7 +631,7 @@ MuPDF is licensed under the [GNU Affero General Public License v3](third_party/m
 ## Acknowledgments
 
 - **MuPDF Team** for the excellent PDF library
-- **Go Team** for the powerful programming language  
+- **Go Team** for the powerful programming language
 - **Contributors** who helped improve this wrapper
 
 ## File Organization
@@ -674,9 +674,9 @@ Tests are organized to directly mirror the module structure:
 
 ---
 
-**Version**: 1.0.0  
-**MuPDF Version**: 1.26.3  
-**Go Version**: 1.19+  
-**Architecture**: Modular design with 10 focused source files  
-**Test Coverage**: 81.8% with 21 organized test files  
+**Version**: 1.0.0
+**MuPDF Version**: 1.26.3
+**Go Version**: 1.19+
+**Architecture**: Modular design with 10 focused source files
+**Test Coverage**: 81.8% with 21 organized test files
 **Last Updated**: 2024
