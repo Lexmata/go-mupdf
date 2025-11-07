@@ -1,0 +1,115 @@
+# Git attributes for Go MuPDF Wrapper project
+# https://git-scm.com/docs/gitattributes
+
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.go text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.py text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.xml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.conf text eol=lf
+*.config text eol=lf
+*.cmake text eol=lf
+*.make text eol=lf
+Makefile text eol=lf
+*.mk text eol=lf
+
+# Denote all files that are truly binary and should not be modified.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.tgz binary
+*.bz2 binary
+*.xz binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.a binary
+*.o binary
+*.obj binary
+*.lib binary
+*.dylib binary
+*.framework binary
+
+# Go specific
+*.mod text eol=lf
+*.sum text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+
+# Documentation
+*.md text eol=lf diff=markdown
+README.md text eol=lf diff=markdown
+CHANGELOG.md text eol=lf diff=markdown
+LICENSE text eol=lf
+
+# Configuration files
+.editorconfig text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.gitmodules text eol=lf
+*.gitignore text eol=lf
+
+# YAML files
+bitbucket-pipelines.yml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+*.bash text eol=lf
+install.sh text eol=lf
+
+# Git hooks
+.githooks/* text eol=lf
+
+# C/C++ source files (for MuPDF)
+*.c text eol=lf diff=cpp
+*.h text eol=lf diff=cpp
+*.cpp text eol=lf diff=cpp
+*.hpp text eol=lf diff=cpp
+*.cc text eol=lf diff=cpp
+*.cxx text eol=lf diff=cpp
+
+# Exclude third_party from GitHub linguist stats
+# This helps keep language statistics focused on our code
+third_party/** linguist-vendored
+third_party/** -linguist-detectable
+
+# Generated files (if any)
+*.pb.go linguist-generated=true
+*.gen.go linguist-generated=true
+
+# Large files that should use Git LFS (if needed in future)
+# *.large binary
+
+# VERSION file
+VERSION text eol=lf
+
