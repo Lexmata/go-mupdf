@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Prepare-commit-msg hook for automated versioning
+# Updates VERSION file when merging release branches to main
+# This ensures the version update is part of the merge commit
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+COMMIT_MSG_FILE="$1"
+COMMIT_SOURCE="$2"
+SHA1="$3"
+
+# Only process merge commits
+if [ "$COMMIT_SOURCE" != "merge" ]; then
+    exit 0
+fi
+
+# Get current branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+# Only run on main branch
+if [ "$CURRENT_BRANCH" != "main" ] && [ "$CURRENT_BRANCH" != "master" ]; then
+    exit 0
+fi
+
+echo -e "${BLUE}🔍 Preparing merge commit...${NC}"
+
+# Read the merge message to find the release branch
+MERGE_MSG=$(cat "$COMMIT_MSG_FILE" 2>/dev/null || echo "")
+
+# Try to extract release branch name from merge message
+RELEASE_BRANCH=""
+if echo "$MERGE_MSG" | grep -qE "Merge.*release/"; then
+    RELEASE_BRANCH=$(echo "$MERGE_MSG" | grep -oE "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+fi
+
+# Alternative: Check MERGE_HEAD for release branch info
+if [ -z "$RELEASE_BRANCH" ] && [ -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then
+    MERGE_HEAD=$(cat "$(git rev-parse --git-path MERGE_HEAD)" 2>/dev/null | head -1)
+    if [ -n "$MERGE_HEAD" ]; then
+        # Try to find release branch in merged commits
+        MERGED_BRANCHES=$(git branch -r --contains "$MERGE_HEAD" 2>/dev/null | grep -E "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+        if [ -n "$MERGED_BRANCHES" ]; then
+            RELEASE_BRANCH=$(echo "$MERGED_BRANCHES" | sed 's|^[[:space:]]*origin/||' | sed 's|^[[:space:]]*||')
+        fi
+
+        # Also try git name-rev
+        if [ -z "$RELEASE_BRANCH" ]; then
+            BRANCH_NAME=$(git name-rev --name-only "$MERGE_HEAD" 2>/dev/null | sed 's|^remotes/origin/||' | sed 's|^origin/||')
+            if echo "$BRANCH_NAME" | grep -qE "^release/[0-9]+\.[0-9]+\.[0-9]+"; then
+                RELEASE_BRANCH="$BRANCH_NAME"
+            fi
+        fi
+    fi
+fi
+
+# Extract version from release branch name (release/X.Y.Z -> X.Y.Z)
+if [ -n "$RELEASE_BRANCH" ]; then
+    VERSION=$(echo "$RELEASE_BRANCH" | sed -E 's|^release/([0-9]+\.[0-9]+\.[0-9]+).*|\1|')
+
+    if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${GREEN}✅ Release branch detected: $RELEASE_BRANCH${NC}"
+        echo -e "${BLUE}📦 Version: $VERSION${NC}"
+
+        # Read current version
+        CURRENT_VERSION=$(cat VERSION 2>/dev/null || echo "0.0.0")
+
+        # Check if version needs updating
+        if [ "$VERSION" != "$CURRENT_VERSION" ]; then
+            echo -e "${YELLOW}🔄 Updating VERSION file from $CURRENT_VERSION to $VERSION${NC}"
+
+            # Update VERSION file
+            echo "$VERSION" > VERSION
+
+            # Stage the VERSION file so it's included in the merge commit
+            git add VERSION 2>/dev/null
+
+            echo -e "${GREEN}✅ VERSION file updated and staged for merge commit${NC}"
+            echo -e "${BLUE}💡 The version update will be included in this merge commit${NC}"
+        else
+            echo -e "${GREEN}✅ VERSION file already at $VERSION${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Could not extract valid version from branch: $RELEASE_BRANCH${NC}"
+    fi
+fi
+
+exit 0
+

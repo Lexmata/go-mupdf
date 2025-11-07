@@ -51,7 +51,7 @@ func createSimplePDF(ctx *mupdf.Context) {
 
 	// Save the document (you would typically save to a file)
 	// doc.Save("output.pdf") // This method would need to be implemented
-	
+
 	fmt.Println("✅ PDF creation example completed")
 }
 
@@ -91,7 +91,7 @@ func readExistingPDF(ctx *mupdf.Context, filename string) {
 		if len(text) > 100 {
 			text = text[:100] + "..."
 		}
-		
+
 		fmt.Printf("✅ Extracted text preview: %s\n", text)
 	}
 }
