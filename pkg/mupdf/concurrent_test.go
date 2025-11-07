@@ -179,20 +179,12 @@ func TestConcurrentDocuments(t *testing.T) {
 }
 
 // TestConcurrentPDFCreation tests creating multiple PDFs concurrently
-// NOTE: Temporarily disabled due to concurrency issues with shared context
+// Each goroutine uses its own context to ensure thread safety
 func TestConcurrentPDFCreation(t *testing.T) {
-	t.Skip("Temporarily disabled due to concurrency issues - shared context is not thread-safe for MuPDF operations")
 	requireMuPDF(t)
 	skipIfShort(t)
 
-	// Create a shared context
-	ctx, err := NewContext()
-	if err != nil {
-		t.Fatalf("Failed to create context: %v", err)
-	}
-	defer ctx.Drop()
-
-	// Create a temporary directory
+	// Create a shared temporary directory for all PDFs
 	dir := testDataDir(t)
 
 	// Number of concurrent PDF creations
@@ -200,32 +192,32 @@ func TestConcurrentPDFCreation(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numPDFs)
 
-	// Create a mutex to protect context access
-	var mu sync.Mutex
-
-	// Create multiple PDFs concurrently
+	// Create multiple PDFs concurrently, each with its own context
 	for i := 0; i < numPDFs; i++ {
 		go func(id int) {
 			defer wg.Done()
 
-			// Use mutex to protect context access
-			mu.Lock()
-			writer, err := NewPDFWriter(ctx)
-			mu.Unlock()
+			// Create a separate context for this goroutine
+			// This ensures thread safety - each goroutine has its own isolated context
+			ctx, err := NewContext()
+			if err != nil {
+				t.Errorf("Worker %d: Failed to create context: %v", id, err)
+				return
+			}
+			defer ctx.Drop()
 
+			// Create a PDF writer using this context
+			writer, err := NewPDFWriter(ctx)
 			if err != nil {
 				t.Errorf("Worker %d: Failed to create PDF writer: %v", id, err)
 				return
 			}
 			defer writer.Close()
 
-			// Add pages
+			// Add pages - each worker creates a different number of pages
 			numPages := id + 1
 			for j := 0; j < numPages; j++ {
-				mu.Lock()
 				_, err = writer.AddPage(595, 842) // A4 size
-				mu.Unlock()
-
 				if err != nil {
 					t.Errorf("Worker %d: Failed to add page %d: %v", id, j, err)
 					return
@@ -234,21 +226,14 @@ func TestConcurrentPDFCreation(t *testing.T) {
 
 			// Save the PDF
 			pdfPath := filepath.Join(dir, fmt.Sprintf("concurrent_%c.pdf", 'A'+id))
-
-			mu.Lock()
 			err = writer.Save(pdfPath)
-			mu.Unlock()
-
 			if err != nil {
 				t.Errorf("Worker %d: Failed to save PDF: %v", id, err)
 				return
 			}
 
-			// Verify the PDF
-			mu.Lock()
+			// Verify the PDF by opening it with the same context
 			doc, err := OpenDocument(ctx, pdfPath)
-			mu.Unlock()
-
 			if err != nil {
 				t.Errorf("Worker %d: Failed to open created document: %v", id, err)
 				return
@@ -260,6 +245,25 @@ func TestConcurrentPDFCreation(t *testing.T) {
 			if pageCount != numPages {
 				t.Errorf("Worker %d: Expected %d pages, got %d", id, numPages, pageCount)
 				return
+			}
+
+			// Verify we can load and access pages
+			for j := 0; j < pageCount; j++ {
+				page, err := doc.LoadPage(j)
+				if err != nil {
+					t.Errorf("Worker %d: Failed to load page %d: %v", id, j, err)
+					return
+				}
+
+				// Verify page bounds (Rect has X0, Y0, X1, Y1 fields)
+				bounds := page.Bound()
+				width := bounds.X1 - bounds.X0
+				height := bounds.Y1 - bounds.Y0
+				if width <= 0 || height <= 0 {
+					t.Errorf("Worker %d: Page %d has invalid bounds: %+v (width=%.2f, height=%.2f)", id, j, bounds, width, height)
+				}
+
+				page.Close()
 			}
 		}(i)
 	}
