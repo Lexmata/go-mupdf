@@ -20,7 +20,7 @@
 package mupdf
 
 /*
-#cgo pkg-config: mupdf
+#cgo CFLAGS: -I/usr/include
 #cgo LDFLAGS: -lmupdf -lm
 
 #include <stdlib.h>

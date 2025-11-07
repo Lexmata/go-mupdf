@@ -14,6 +14,10 @@ definitions:
         caches:
           - go
         script:
+          # Install MuPDF and pkg-config (needed for go vet with CGO)
+          - apt-get update
+          - apt-get install -y libmupdf-dev pkg-config
+
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
