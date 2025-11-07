@@ -56,3 +56,4 @@ Thumbs.db# Created by https://www.toptal.com/developers/gitignore/api/go
 
 # End of https://www.toptal.com/developers/gitignore/api/go
 
+third_party/mupdf/build

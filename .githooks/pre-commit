@@ -159,11 +159,11 @@ if [ -z "$STAGED_GO_FILES" ]; then
     echo -e "${YELLOW}⚠️  No Go files staged (excluding examples), skipping tests${NC}"
 else
     echo "   Testing files: $(echo "$STAGED_GO_FILES" | wc -l) file(s)"
-    
+
     # Run tests for the package containing changed files
     # Extract unique package paths, exclude examples
     PACKAGES=$(echo "$STAGED_GO_FILES" | sed 's|/[^/]*$||' | sort -u | grep -v '^third_party/' | grep -v '^examples/' || true)
-    
+
     if [ -n "$PACKAGES" ]; then
         for pkg in $PACKAGES; do
             if [ -d "$pkg" ]; then

@@ -122,7 +122,7 @@ definitions:
           - echo "Generating coverage report..."
           - go tool cover -html=coverage.out -o coverage.html
           - go tool cover -func=coverage.out
-          
+
           # Upload coverage to Codecov
           - echo "Uploading coverage to Codecov..."
           - |
@@ -184,7 +184,7 @@ pipelines:
             - echo "Generating coverage report..."
             - go tool cover -html=coverage.out -o coverage.html
             - go tool cover -func=coverage.out
-            
+
             # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
@@ -193,7 +193,7 @@ pipelines:
               else
                 echo "CODECOV_TOKEN not set, skipping Codecov upload"
               fi
-            
+
             # Build examples or binaries if they exist
             - |
               if [ -d "cmd" ]; then
@@ -239,7 +239,7 @@ pipelines:
             - echo "Running comprehensive test suite..."
             - go test -v -race -coverprofile=release-coverage.out ./...
             - go tool cover -func=release-coverage.out
-            
+
             # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
@@ -439,7 +439,7 @@ pipelines:
             - echo "Generating coverage report for PR..."
             - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
             - go tool cover -func=pr-coverage.out
-            
+
             # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
