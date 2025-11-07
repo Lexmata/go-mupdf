@@ -109,7 +109,7 @@ pipelines:
           script:
             # Install MuPDF from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev libmupdf1
+            - apt-get install -y libmupdf-dev
 
             # Set up Go environment
             - export GO111MODULE=on
@@ -163,7 +163,7 @@ pipelines:
           script:
             # Install MuPDF from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev libmupdf1
+            - apt-get install -y libmupdf-dev
 
             # Set up Go environment
             - export GO111MODULE=on
@@ -338,7 +338,7 @@ pipelines:
             script:
               # Install MuPDF from package manager
               - apt-get update
-              - apt-get install -y libmupdf-dev libmupdf1
+              - apt-get install -y libmupdf-dev
 
               # Set up Go environment
               - export GO111MODULE=on
