@@ -70,7 +70,29 @@ else
             exit 1
         fi
     elif is_develop; then
-        echo -e "${GREEN}✅ Commits to develop branch are allowed${NC}"
+        if [ "$IS_MERGE" = true ]; then
+            # Check if merge is from a git-flow branch (feature/bugfix/hotfix/release)
+            if echo "$MERGE_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
+                echo -e "${GREEN}✅ Merge from git-flow branch to develop is allowed${NC}"
+            else
+                echo -e "${RED}❌ Develop branch can only receive merges from git-flow branches!${NC}"
+                echo "   Current merge is from: $MERGE_BRANCH"
+                echo "   Only merges from 'feature/*', 'bugfix/*', 'hotfix/*', or 'release/*' branches are allowed to develop"
+                exit 1
+            fi
+        else
+            # Block direct commits to develop
+            echo -e "${RED}❌ Direct commits to develop branch are not allowed!${NC}"
+            echo ""
+            echo "   Develop branch should only receive merges from feature/bugfix/hotfix/release branches."
+            echo "   Workflow:"
+            echo "     1. Create a feature/bugfix branch from develop"
+            echo "     2. Make commits on that branch"
+            echo "     3. Merge the feature/bugfix branch to develop"
+            echo "     4. Merge develop to main (for releases)"
+            echo ""
+            exit 1
+        fi
     else
         # Check if it's a git-flow branch
         if echo "$CURRENT_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
@@ -168,11 +190,15 @@ else
         for pkg in $PACKAGES; do
             if [ -d "$pkg" ]; then
                 echo "   Testing package: $pkg"
-                if go test -short "$pkg" >/dev/null 2>&1; then
+                # Capture both stdout and stderr, filter out MuPDF warnings
+                TEST_OUTPUT=$(go test -short "$pkg" 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
+                TEST_EXIT_CODE=${PIPESTATUS[0]}
+                
+                if [ $TEST_EXIT_CODE -eq 0 ]; then
                     echo -e "      ${GREEN}✅ $pkg tests passed${NC}"
                 else
                     echo -e "      ${RED}❌ Tests failed in $pkg${NC}"
-                    go test -short "$pkg" 2>&1 | grep -v "^third_party/" | head -10 || true
+                    echo "$TEST_OUTPUT" | head -20
                     FAILED=1
                 fi
             fi
@@ -182,11 +208,15 @@ else
     # Also run a quick test on the main package
     if [ -d "pkg/mupdf" ]; then
         echo "   Running quick tests on pkg/mupdf..."
-        if go test -short ./pkg/mupdf/ >/dev/null 2>&1; then
+        # Capture test output and filter out MuPDF warnings
+        TEST_OUTPUT=$(go test -short ./pkg/mupdf/ 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✅ Package tests passed${NC}"
         else
             echo -e "${RED}❌ Package tests failed${NC}"
-            go test -short ./pkg/mupdf/ 2>&1 | grep -v "^third_party/" | head -20 || true
+            echo "$TEST_OUTPUT" | head -20
             FAILED=1
         fi
     fi
