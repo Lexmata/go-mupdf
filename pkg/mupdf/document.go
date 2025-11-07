@@ -7,7 +7,7 @@ package mupdf
 
 /*
 #cgo CFLAGS: -I/usr/include
-#cgo LDFLAGS: -lmupdf -lm
+#cgo LDFLAGS: -lmupdf -lfreetype -ljpeg -lpng -lz -ljbig2dec -lopenjp2 -lharfbuzz -lgumbo -lextract -lmujs -lm
 
 #include <stdlib.h>
 #include <string.h>
