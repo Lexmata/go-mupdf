@@ -1,6 +1,9 @@
 image: golang:1.21
 
 definitions:
+  caches:
+    go: /go/pkg/mod
+
   services:
     docker:
       memory: 2048
