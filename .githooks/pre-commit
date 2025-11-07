@@ -70,7 +70,29 @@ else
             exit 1
         fi
     elif is_develop; then
-        echo -e "${GREEN}✅ Commits to develop branch are allowed${NC}"
+        if [ "$IS_MERGE" = true ]; then
+            # Check if merge is from a git-flow branch (feature/bugfix/hotfix/release)
+            if echo "$MERGE_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
+                echo -e "${GREEN}✅ Merge from git-flow branch to develop is allowed${NC}"
+            else
+                echo -e "${RED}❌ Develop branch can only receive merges from git-flow branches!${NC}"
+                echo "   Current merge is from: $MERGE_BRANCH"
+                echo "   Only merges from 'feature/*', 'bugfix/*', 'hotfix/*', or 'release/*' branches are allowed to develop"
+                exit 1
+            fi
+        else
+            # Block direct commits to develop
+            echo -e "${RED}❌ Direct commits to develop branch are not allowed!${NC}"
+            echo ""
+            echo "   Develop branch should only receive merges from feature/bugfix/hotfix/release branches."
+            echo "   Workflow:"
+            echo "     1. Create a feature/bugfix branch from develop"
+            echo "     2. Make commits on that branch"
+            echo "     3. Merge the feature/bugfix branch to develop"
+            echo "     4. Merge develop to main (for releases)"
+            echo ""
+            exit 1
+        fi
     else
         # Check if it's a git-flow branch
         if echo "$CURRENT_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
