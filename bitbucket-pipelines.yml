@@ -196,7 +196,7 @@ pipelines:
           script:
             # Install MuPDF and release tools from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev libmupdf1 curl jq zip
+            - apt-get install -y libmupdf-dev curl jq zip
 
             # Set up Go environment
             - export GO111MODULE=on
