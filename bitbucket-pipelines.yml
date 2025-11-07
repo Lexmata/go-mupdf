@@ -2,7 +2,8 @@ image: golang:1.21
 
 definitions:
   caches:
-    mupdf: third_party/mupdf/build/
+    mupdf:
+      path: third_party/mupdf/build/
 
   services:
     docker:
