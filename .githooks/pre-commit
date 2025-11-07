@@ -152,18 +152,18 @@ fi
 # Run tests (only on changed Go files to speed up)
 echo "🧪 Running tests on changed files..."
 
-# Get list of staged Go files
-STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' | grep -v '^third_party/' || true)
+# Get list of staged Go files (exclude examples and third_party)
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' | grep -v '^third_party/' | grep -v '^examples/' || true)
 
 if [ -z "$STAGED_GO_FILES" ]; then
-    echo -e "${YELLOW}⚠️  No Go files staged, skipping tests${NC}"
+    echo -e "${YELLOW}⚠️  No Go files staged (excluding examples), skipping tests${NC}"
 else
     echo "   Testing files: $(echo "$STAGED_GO_FILES" | wc -l) file(s)"
-
+    
     # Run tests for the package containing changed files
-    # Extract unique package paths
-    PACKAGES=$(echo "$STAGED_GO_FILES" | sed 's|/[^/]*$||' | sort -u | grep -v '^third_party/' || true)
-
+    # Extract unique package paths, exclude examples
+    PACKAGES=$(echo "$STAGED_GO_FILES" | sed 's|/[^/]*$||' | sort -u | grep -v '^third_party/' | grep -v '^examples/' || true)
+    
     if [ -n "$PACKAGES" ]; then
         for pkg in $PACKAGES; do
             if [ -d "$pkg" ]; then
