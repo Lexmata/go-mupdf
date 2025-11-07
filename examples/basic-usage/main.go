@@ -32,26 +32,31 @@ func main() {
 func createSimplePDF(ctx *mupdf.Context) {
 	fmt.Println("\n📄 Creating a simple PDF...")
 
-	// Create a new PDF document
-	doc, err := mupdf.CreatePDF(ctx)
+	// Create a new PDF writer
+	writer, err := mupdf.NewPDFWriter(ctx)
 	if err != nil {
-		log.Fatal("Failed to create PDF:", err)
+		log.Fatal("Failed to create PDF writer:", err)
 	}
-	defer doc.Close()
+	defer writer.Close()
 
-	// Add a page with some text
-	page, err := doc.AddPage(mupdf.USLetter)
+	// Add a page with US Letter size (612 x 792 points)
+	page, err := writer.AddPage(612, 792)
 	if err != nil {
 		log.Fatal("Failed to add page:", err)
 	}
 	defer page.Close()
 
 	fmt.Println("✅ Created PDF with one page")
-	fmt.Printf("   Page size: %.1f x %.1f\n", mupdf.USLetter.Width, mupdf.USLetter.Height)
+	fmt.Printf("   Page size: 612 x 792 points (US Letter)\n")
 
-	// Save the document (you would typically save to a file)
-	// doc.Save("output.pdf") // This method would need to be implemented
-	
+	// Save the document
+	err = writer.Save("output.pdf")
+	if err != nil {
+		log.Printf("Note: Save failed (this is expected in example): %v", err)
+	} else {
+		fmt.Println("✅ PDF saved to output.pdf")
+	}
+
 	fmt.Println("✅ PDF creation example completed")
 }
 
@@ -91,7 +96,7 @@ func readExistingPDF(ctx *mupdf.Context, filename string) {
 		if len(text) > 100 {
 			text = text[:100] + "..."
 		}
-		
+
 		fmt.Printf("✅ Extracted text preview: %s\n", text)
 	}
 }
