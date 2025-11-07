@@ -1,7 +1,7 @@
 # Go MuPDF Wrapper
 
 [![Go Reference](https://pkg.go.dev/badge/bitbucket.org/lexmata/go-mupdf.svg)](https://pkg.go.dev/bitbucket.org/lexmata/go-mupdf)
-[![Test Coverage](https://img.shields.io/badge/coverage-81.8%25-brightgreen.svg)](pkg/mupdf)
+[![codecov](https://codecov.io/gh/lexmata/go-mupdf/branch/main/graph/badge.svg)](https://codecov.io/gh/lexmata/go-mupdf)
 [![Go Report Card](https://goreportcard.com/badge/bitbucket.org/lexmata/go-mupdf)](https://goreportcard.com/report/bitbucket.org/lexmata/go-mupdf)
 
 A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), providing powerful PDF processing capabilities with excellent memory management and robust error handling.
@@ -293,6 +293,10 @@ func (e Error) Error() string
 ## Testing
 
 The project includes a comprehensive test suite with **81.8% coverage** across **123 test functions**.
+
+[![codecov](https://codecov.io/gh/lexmata/go-mupdf/branch/main/graph/badge.svg)](https://codecov.io/gh/lexmata/go-mupdf)
+
+Code coverage is tracked and reported via [Codecov](https://codecov.io/gh/lexmata/go-mupdf). Coverage reports are automatically generated during CI/CD pipeline runs and uploaded to Codecov for tracking coverage trends over time.
 
 ### Running Tests
 
