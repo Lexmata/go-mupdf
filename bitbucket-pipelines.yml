@@ -332,39 +332,39 @@ pipelines:
       - parallel:
         - step: *lint
         - step:
-          name: Run Tests for PR
-          caches:
-            - go
-          script:
-            # Install MuPDF from package manager
-            - apt-get update
-            - apt-get install -y libmupdf-dev libmupdf1
+            name: Run Tests for PR
+            caches:
+              - go
+            script:
+              # Install MuPDF from package manager
+              - apt-get update
+              - apt-get install -y libmupdf-dev libmupdf1
 
-            # Set up Go environment
-            - export GO111MODULE=on
-            - export CGO_ENABLED=1
-            - export GOOS=linux
-            - export GOARCH=amd64
+              # Set up Go environment
+              - export GO111MODULE=on
+              - export CGO_ENABLED=1
+              - export GOOS=linux
+              - export GOARCH=amd64
 
-            # Cache Go modules
-            - go mod download
+              # Cache Go modules
+              - go mod download
 
-            # Run tests with race detection
-            - echo "Running tests with race detection..."
-            - go test -v -race ./...
+              # Run tests with race detection
+              - echo "Running tests with race detection..."
+              - go test -v -race ./...
 
-            # Generate coverage for changed files
-            - echo "Generating coverage report for PR..."
-            - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
-            - go tool cover -func=pr-coverage.out
+              # Generate coverage for changed files
+              - echo "Generating coverage report for PR..."
+              - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
+              - go tool cover -func=pr-coverage.out
 
-            # Upload coverage to Codecov
-            - echo "Uploading coverage to Codecov..."
-            - |
-              if [ -n "$CODECOV_TOKEN" ]; then
-                curl -s https://codecov.io/bash | bash -s - -f pr-coverage.out -t $CODECOV_TOKEN || echo "Codecov upload failed"
-              else
-                echo "CODECOV_TOKEN not set, skipping Codecov upload"
-              fi
-          artifacts:
-            - pr-coverage.out
+              # Upload coverage to Codecov
+              - echo "Uploading coverage to Codecov..."
+              - |
+                if [ -n "$CODECOV_TOKEN" ]; then
+                  curl -s https://codecov.io/bash | bash -s - -f pr-coverage.out -t $CODECOV_TOKEN || echo "Codecov upload failed"
+                else
+                  echo "CODECOV_TOKEN not set, skipping Codecov upload"
+                fi
+            artifacts:
+              - pr-coverage.out
