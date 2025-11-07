@@ -1,8 +1,8 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
-#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third -lm
+#cgo pkg-config: mupdf
+#cgo LDFLAGS: -lmupdf -lm
 
 #include <stdlib.h>
 #include <string.h>
@@ -66,8 +66,9 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
     *out_error = NULL;
 
     fz_try(ctx) {
-        // Use FZ_MEDIA_BOX as the default box type
-        rect = pdf_bound_page(ctx, page, FZ_MEDIA_BOX);
+        // pdf_bound_page takes ctx, page, and box type
+        // Use PDF_MEDIA_BOX (0) as the default box type
+        rect = pdf_bound_page(ctx, page, 0);
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
@@ -400,7 +401,7 @@ func (pdf *PDFDocument) LoadPage(pageNum int) (*PDFPage, error) {
 func (page *PDFPage) Close() {
 	if page.page != nil && page.ctx != nil && page.ctx.ctx != nil {
 		// Always drop the page - pages should be properly managed
-		C.pdf_drop_page(page.ctx.ctx, page.page)
+		C.fz_drop_page(page.ctx.ctx, (*C.fz_page)(unsafe.Pointer(page.page)))
 		page.page = nil
 	}
 }

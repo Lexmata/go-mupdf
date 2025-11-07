@@ -54,9 +54,9 @@ definitions:
         caches:
           - go
         script:
-          # Install MuPDF from package manager
+          # Install MuPDF and pkg-config from package manager
           - apt-get update
-          - apt-get install -y libmupdf-dev
+          - apt-get install -y libmupdf-dev pkg-config
 
           # Set up Go environment
           - export GO111MODULE=on

@@ -6,8 +6,8 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
-#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third -lm
+#cgo pkg-config: mupdf
+#cgo LDFLAGS: -lmupdf -lm
 
 #include <stdlib.h>
 #include <string.h>
