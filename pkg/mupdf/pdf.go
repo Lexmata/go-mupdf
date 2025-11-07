@@ -9,6 +9,11 @@ package mupdf
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
+// Define FZ_MEDIA_BOX if not available (for older MuPDF versions)
+#ifndef FZ_MEDIA_BOX
+#define FZ_MEDIA_BOX 0
+#endif
+
 // PDF document conversion
 pdf_document* go_mupdf_pdf_document_from_fz_document(fz_context *ctx, fz_document *doc, char **out_error) {
     pdf_document *pdf = NULL;
@@ -66,9 +71,10 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
     *out_error = NULL;
 
     fz_try(ctx) {
-        // pdf_bound_page takes ctx, page, and box type
-        // Use FZ_MEDIA_BOX as the default box type
-        rect = pdf_bound_page(ctx, page, FZ_MEDIA_BOX);
+        // Use fz_bound_page instead of pdf_bound_page for version compatibility
+        // pdf_bound_page API varies between MuPDF versions, but fz_bound_page
+        // is stable. Cast pdf_page to fz_page since pdf_page extends fz_page.
+        rect = fz_bound_page(ctx, (fz_page *)page);
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
