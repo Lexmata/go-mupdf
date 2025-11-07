@@ -1,49 +1,11 @@
 image: golang:1.21
 
 definitions:
-  caches:
-    mupdf:
-      path: third_party/mupdf/build/
-
   services:
     docker:
       memory: 2048
 
   steps:
-    - step: &build-mupdf
-        name: Build MuPDF Library
-        caches:
-          - go
-          - mupdf
-        script:
-          # Install system dependencies
-          - apt-get update
-          - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-          - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-
-          # Set up Go environment
-          - export GO111MODULE=on
-          - export CGO_ENABLED=1
-          - export GOOS=linux
-          - export GOARCH=amd64
-
-          # Cache Go modules
-          - go mod download
-
-          # Build MuPDF library if not cached
-          - |
-            if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-              echo "Building MuPDF library..."
-              cd third_party/mupdf
-              make -j$(nproc) libs
-              cd ../..
-            else
-              echo "Using cached MuPDF library"
-            fi
-
-          # Verify MuPDF build
-          - ls -la third_party/mupdf/build/release/ || echo "Build directory not found"
-
     - step: &lint
         name: Lint Code
         caches:
@@ -88,7 +50,6 @@ definitions:
         name: Run Tests
         caches:
           - go
-          - mupdf
         script:
           # Set up Go environment
           - export GO111MODULE=on
@@ -98,18 +59,6 @@ definitions:
 
           # Cache Go modules
           - go mod download
-
-          # Verify MuPDF library exists (should be built in previous step)
-          - |
-            if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-              echo "MuPDF library not found, building..."
-              apt-get update
-              apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-              apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-              cd third_party/mupdf
-              make -j$(nproc) libs
-              cd ../..
-            fi
 
           # Run all tests with race detection
           - echo "Running all tests with race detection..."
@@ -138,19 +87,16 @@ definitions:
 
 pipelines:
   default:
-    - step: *build-mupdf
     - step: *lint
     - step: *test
 
   branches:
     main:
-      - step: *build-mupdf
       - step: *lint
       - step:
           name: Run Tests and Benchmarks
           caches:
             - go
-            - mupdf
           script:
             # Set up Go environment
             - export GO111MODULE=on
@@ -160,18 +106,6 @@ pipelines:
 
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get update
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Run comprehensive tests
             - echo "Running comprehensive tests with race detection..."
@@ -207,13 +141,11 @@ pipelines:
 
   tags:
     v*:
-      - step: *build-mupdf
       - step: *lint
       - step:
           name: Run Tests for Release
           caches:
             - go
-            - mupdf
           script:
             # Set up Go environment
             - export GO111MODULE=on
@@ -223,18 +155,6 @@ pipelines:
 
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get update
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
@@ -255,7 +175,6 @@ pipelines:
           name: Build Release Artifacts
           caches:
             - go
-            - mupdf
           script:
             # Set up Go environment
             - export GO111MODULE=on
@@ -269,17 +188,6 @@ pipelines:
 
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Create release directory structure
             - mkdir -p releases/{source,binaries,documentation}
@@ -403,13 +311,11 @@ pipelines:
 
   pull-requests:
     '**':
-      - step: *build-mupdf
       - step: *lint
       - step:
           name: Run Tests for PR
           caches:
             - go
-            - mupdf
           script:
             # Set up Go environment
             - export GO111MODULE=on
@@ -419,18 +325,6 @@ pipelines:
 
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get update
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Run tests with race detection
             - echo "Running tests with race detection..."
