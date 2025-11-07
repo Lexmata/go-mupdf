@@ -94,13 +94,15 @@ definitions:
 
 pipelines:
   default:
-    - step: *lint
-    - step: *test
+    - parallel:
+      - step: *lint
+      - step: *test
 
   branches:
     main:
-      - step: *lint
-      - step:
+      - parallel:
+        - step: *lint
+        - step:
           name: Run Tests and Benchmarks
           caches:
             - go
@@ -152,8 +154,9 @@ pipelines:
 
   tags:
     v*:
-      - step: *lint
-      - step:
+      - parallel:
+        - step: *lint
+        - step:
           name: Run Tests for Release
           caches:
             - go
@@ -326,8 +329,9 @@ pipelines:
 
   pull-requests:
     '**':
-      - step: *lint
-      - step:
+      - parallel:
+        - step: *lint
+        - step:
           name: Run Tests for PR
           caches:
             - go
