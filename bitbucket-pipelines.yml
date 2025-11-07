@@ -1,57 +1,28 @@
-image: golang:1.21
+image: golang:1.23
 
 definitions:
   caches:
-    mupdf:
-      path: third_party/mupdf/build/
+    go: /go/pkg/mod
 
   services:
     docker:
       memory: 2048
 
   steps:
-    - step: &build-mupdf
-        name: Build MuPDF Library
-        caches:
-          - go
-          - mupdf
-        script:
-          # Install system dependencies
-          - apt-get update
-          - apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-          - apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-
-          # Set up Go environment
-          - export GO111MODULE=on
-          - export CGO_ENABLED=1
-          - export GOOS=linux
-          - export GOARCH=amd64
-
-          # Cache Go modules
-          - go mod download
-
-          # Build MuPDF library if not cached
-          - |
-            if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-              echo "Building MuPDF library..."
-              cd third_party/mupdf
-              make -j$(nproc) libs
-              cd ../..
-            else
-              echo "Using cached MuPDF library"
-            fi
-
-          # Verify MuPDF build
-          - ls -la third_party/mupdf/build/release/ || echo "Build directory not found"
-
     - step: &lint
         name: Lint Code
         caches:
           - go
         script:
+          # Install MuPDF and all required dependencies (needed for go vet with CGO)
+          - apt-get update
+          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
+          - export GOTOOLCHAIN=local
+          - export GOFLAGS=-buildvcs=false
 
           # Check code formatting
           - echo "Checking code formatting with gofmt..."
@@ -88,28 +59,20 @@ definitions:
         name: Run Tests
         caches:
           - go
-          - mupdf
         script:
+          # Install MuPDF and all required dependencies from package manager
+          - apt-get update
+          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+
           # Set up Go environment
           - export GO111MODULE=on
           - export CGO_ENABLED=1
           - export GOOS=linux
           - export GOARCH=amd64
+          - export GOTOOLCHAIN=local
 
           # Cache Go modules
           - go mod download
-
-          # Verify MuPDF library exists (should be built in previous step)
-          - |
-            if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-              echo "MuPDF library not found, building..."
-              apt-get update
-              apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-              apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-              cd third_party/mupdf
-              make -j$(nproc) libs
-              cd ../..
-            fi
 
           # Run all tests with race detection
           - echo "Running all tests with race detection..."
@@ -138,20 +101,23 @@ definitions:
 
 pipelines:
   default:
-    - step: *build-mupdf
-    - step: *lint
-    - step: *test
+    - parallel:
+      - step: *lint
+      - step: *test
 
   branches:
     main:
-      - step: *build-mupdf
-      - step: *lint
-      - step:
+      - parallel:
+        - step: *lint
+        - step:
           name: Run Tests and Benchmarks
           caches:
             - go
-            - mupdf
           script:
+            # Install MuPDF from package manager
+            - apt-get update
+            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
@@ -160,18 +126,6 @@ pipelines:
 
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get update
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Run comprehensive tests
             - echo "Running comprehensive tests with race detection..."
@@ -207,14 +161,17 @@ pipelines:
 
   tags:
     v*:
-      - step: *build-mupdf
-      - step: *lint
-      - step:
+      - parallel:
+        - step: *lint
+        - step:
           name: Run Tests for Release
           caches:
             - go
-            - mupdf
           script:
+            # Install MuPDF from package manager
+            - apt-get update
+            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
@@ -223,18 +180,6 @@ pipelines:
 
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get update
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
@@ -255,31 +200,19 @@ pipelines:
           name: Build Release Artifacts
           caches:
             - go
-            - mupdf
           script:
+            # Install MuPDF and release tools from package manager
+            - apt-get update
+            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev curl jq zip
+
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
             - echo "Building release artifacts for tag: $TAG_NAME"
 
-            # Install release tools
-            - apt-get update
-            - apt-get install -y curl jq zip
-
             # Cache Go modules
             - go mod download
-
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
 
             # Create release directory structure
             - mkdir -p releases/{source,binaries,documentation}
@@ -403,51 +336,42 @@ pipelines:
 
   pull-requests:
     '**':
-      - step: *build-mupdf
-      - step: *lint
-      - step:
-          name: Run Tests for PR
-          caches:
-            - go
-            - mupdf
-          script:
-            # Set up Go environment
-            - export GO111MODULE=on
-            - export CGO_ENABLED=1
-            - export GOOS=linux
-            - export GOARCH=amd64
+      - parallel:
+        - step: *lint
+        - step:
+            name: Run Tests for PR
+            caches:
+              - go
+            script:
+              # Install MuPDF from package manager
+              - apt-get update
+              - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
 
-            # Cache Go modules
-            - go mod download
+              # Set up Go environment
+              - export GO111MODULE=on
+              - export CGO_ENABLED=1
+              - export GOOS=linux
+              - export GOARCH=amd64
 
-            # Verify MuPDF library exists
-            - |
-              if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-                echo "MuPDF library not found, building..."
-                apt-get update
-                apt-get install -y build-essential make gcc g++ libc6-dev pkg-config
-                apt-get install -y libx11-dev libxext-dev libxrandr-dev libgl1-mesa-dev
-                cd third_party/mupdf
-                make -j$(nproc) libs
-                cd ../..
-              fi
+              # Cache Go modules
+              - go mod download
 
-            # Run tests with race detection
-            - echo "Running tests with race detection..."
-            - go test -v -race ./...
+              # Run tests with race detection
+              - echo "Running tests with race detection..."
+              - go test -v -race ./...
 
-            # Generate coverage for changed files
-            - echo "Generating coverage report for PR..."
-            - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
-            - go tool cover -func=pr-coverage.out
+              # Generate coverage for changed files
+              - echo "Generating coverage report for PR..."
+              - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
+              - go tool cover -func=pr-coverage.out
 
-            # Upload coverage to Codecov
-            - echo "Uploading coverage to Codecov..."
-            - |
-              if [ -n "$CODECOV_TOKEN" ]; then
-                curl -s https://codecov.io/bash | bash -s - -f pr-coverage.out -t $CODECOV_TOKEN || echo "Codecov upload failed"
-              else
-                echo "CODECOV_TOKEN not set, skipping Codecov upload"
-              fi
-          artifacts:
-            - pr-coverage.out
+              # Upload coverage to Codecov
+              - echo "Uploading coverage to Codecov..."
+              - |
+                if [ -n "$CODECOV_TOKEN" ]; then
+                  curl -s https://codecov.io/bash | bash -s - -f pr-coverage.out -t $CODECOV_TOKEN || echo "Codecov upload failed"
+                else
+                  echo "CODECOV_TOKEN not set, skipping Codecov upload"
+                fi
+            artifacts:
+              - pr-coverage.out

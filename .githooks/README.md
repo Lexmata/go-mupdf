@@ -24,6 +24,20 @@ Runs before each commit to ensure code quality and enforce git-flow workflow:
 - **Feature/Bugfix/Hotfix/Release branches**: Allows all commits
 - **Other branches**: Warns but allows commits
 
+### pre-push
+
+Runs before each push to ensure all pre-commit checks have passed:
+
+**Enforcement:**
+- **Blocks push** if any pre-commit checks fail
+- **Runs pre-commit hook** to verify code quality
+- **Prevents bypassing** - hooks are mandatory and cannot be skipped with `--no-verify`
+
+**Purpose:**
+- Ensures code quality standards are maintained in remote repository
+- Prevents pushing broken or unformatted code
+- Enforces git-flow branch rules before push
+
 **Code Quality Checks:**
 - **Code Formatting**: Checks that all Go files are formatted with `gofmt`
 - **Static Analysis**: Runs `go vet` to catch common errors
