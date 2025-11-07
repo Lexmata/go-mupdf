@@ -4,6 +4,7 @@ globs:
 alwaysApply: true
 ---
 - This project uses Git-flow workflow for branch management.
+- **Always start new work from the `develop` branch.** Before creating any feature/bugfix/release branch, ensure you are checked out to `develop` and it is up to date with `origin/develop`.
 - Never commit directly to the `main` branch. Main only receives merges from `develop`.
 - Never commit directly to the `develop` branch. Develop only receives merges from feature/bugfix/hotfix/release branches.
 - All new work must be done on feature branches: `feature/description`, `bugfix/description`, `hotfix/description`, or `release/X.Y.Z`.
