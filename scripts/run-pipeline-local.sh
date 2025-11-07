@@ -66,10 +66,11 @@ run_lint() {
             set -e
             apt-get update -qq
             apt-get install -y -qq libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev > /dev/null
-            
+
             go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
             export PATH=\$PATH:\$(go env GOPATH)/bin
-            
+            export GOTOOLCHAIN=local
+
             echo 'Checking code formatting with gofmt...'
             UNFORMATTED=\$(gofmt -l .)
             if [ -n \"\$UNFORMATTED\" ]; then
@@ -79,14 +80,15 @@ run_lint() {
             else
                 echo '✅ All files are properly formatted'
             fi
-            
+
             export CGO_ENABLED=1
+            export GOFLAGS=-buildvcs=false
             echo 'Running go vet...'
             go vet ./...
-            
+
             echo 'Running golangci-lint...'
             golangci-lint run ./...
-            
+
             if command -v staticcheck >/dev/null 2>&1; then
                 echo 'Running staticcheck...'
                 staticcheck ./...
@@ -123,13 +125,13 @@ run_test() {
             export GOTOOLCHAIN=local
             echo 'Running tests with race detection...'
             go test -v -race ./...
-            
+
             echo 'Running tests with coverage...'
             go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
-            
+
             echo 'Generating coverage report...'
             go tool cover -html=coverage.out -o coverage.html
-            
+
             echo '✅ Tests completed successfully'
         "
 }

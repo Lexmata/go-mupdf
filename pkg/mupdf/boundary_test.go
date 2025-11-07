@@ -68,8 +68,15 @@ func TestCreateTestPDFComplete(t *testing.T) {
 	}
 
 	// Test with different working directories to exercise path creation logic
-	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(originalWd); err != nil {
+			t.Errorf("Failed to restore working directory: %v", err)
+		}
+	}()
 
 	// Create and change to a temp directory
 	tempDir, err := os.MkdirTemp("", "mupdf-test")
@@ -78,7 +85,9 @@ func TestCreateTestPDFComplete(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	os.Chdir(tempDir)
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Failed to change to temp dir: %v", err)
+	}
 	pdf2 := createTestPDF(t)
 	if pdf2 == "" {
 		t.Fatal("createTestPDF returned empty path in temp dir")

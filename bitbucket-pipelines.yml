@@ -21,6 +21,8 @@ definitions:
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
+          - export GOTOOLCHAIN=local
+          - export GOFLAGS=-buildvcs=false
 
           # Check code formatting
           - echo "Checking code formatting with gofmt..."
@@ -67,6 +69,7 @@ definitions:
           - export CGO_ENABLED=1
           - export GOOS=linux
           - export GOARCH=amd64
+          - export GOTOOLCHAIN=local
 
           # Cache Go modules
           - go mod download

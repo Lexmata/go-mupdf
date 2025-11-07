@@ -71,10 +71,28 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
     *out_error = NULL;
 
     fz_try(ctx) {
-        // Use fz_bound_page instead of pdf_bound_page for version compatibility
-        // pdf_bound_page API varies between MuPDF versions, but fz_bound_page
-        // is stable. Cast pdf_page to fz_page since pdf_page extends fz_page.
-        rect = fz_bound_page(ctx, (fz_page *)page);
+        // If page has an obj, try to read MediaBox directly (for manually created pages)
+        if (page && page->obj) {
+            pdf_obj *mediabox = pdf_dict_get(ctx, page->obj, PDF_NAME(MediaBox));
+            if (mediabox && pdf_is_array(ctx, mediabox)) {
+                int len = pdf_array_len(ctx, mediabox);
+                if (len >= 4) {
+                    // MediaBox can contain either integers or reals, try both
+                    rect.x0 = pdf_to_real(ctx, pdf_array_get(ctx, mediabox, 0));
+                    rect.y0 = pdf_to_real(ctx, pdf_array_get(ctx, mediabox, 1));
+                    rect.x1 = pdf_to_real(ctx, pdf_array_get(ctx, mediabox, 2));
+                    rect.y1 = pdf_to_real(ctx, pdf_array_get(ctx, mediabox, 3));
+                }
+            }
+        }
+
+        // If we didn't get bounds from MediaBox, try fz_bound_page
+        if (rect.x0 == 0 && rect.y0 == 0 && rect.x1 == 0 && rect.y1 == 0) {
+            // Use fz_bound_page instead of pdf_bound_page for version compatibility
+            // pdf_bound_page API varies between MuPDF versions, but fz_bound_page
+            // is stable. Cast pdf_page to fz_page since pdf_page extends fz_page.
+            rect = fz_bound_page(ctx, (fz_page *)page);
+        }
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
@@ -167,13 +185,30 @@ pdf_page* go_mupdf_pdf_add_page(fz_context *ctx, pdf_document *doc, float width,
         int count = pdf_dict_get_int(ctx, pages, PDF_NAME(Count));
         pdf_dict_put_int(ctx, pages, PDF_NAME(Count), count + 1);
 
-        // Create the page structure
+        // Clean up
+        fz_drop_buffer(ctx, contents);
+
+        // Create the page structure manually
+        // We initialize it with the page object so that go_mupdf_pdf_bound_page
+        // can read the MediaBox directly from the page object
+        // Note: fz_malloc_struct already zero-initializes the struct
         page = fz_malloc_struct(ctx, pdf_page);
         page->obj = pdf_keep_obj(ctx, page_obj);
         page->doc = doc;
-
-        // Clean up
-        fz_drop_buffer(ctx, contents);
+        // Initialize other fields to safe defaults
+        page->transparency = 0;
+        page->overprint = 0;
+        page->links = NULL;
+        page->annots = NULL;
+        page->annot_tailp = &page->annots;
+        page->widgets = NULL;
+        page->widget_tailp = &page->widgets;
+        // Initialize the super (fz_page) structure
+        // Note: This is a minimal initialization. For full functionality,
+        // we would need to use fz_new_derived_page, but that's not available
+        // in the public API. The Bound() method will read from page->obj directly.
+        // fz_malloc_struct already zero-initializes, so we just set the doc field
+        page->super.doc = (fz_document *)doc;
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
