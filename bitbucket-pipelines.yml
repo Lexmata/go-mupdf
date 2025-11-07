@@ -116,13 +116,14 @@ pipelines:
           script:
             # Install MuPDF from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+            - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
 
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export GOOS=linux
             - export GOARCH=amd64
+            - export GOTOOLCHAIN=local
 
             # Cache Go modules
             - go mod download
