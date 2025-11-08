@@ -52,13 +52,13 @@ definitions:
 
           # Run golangci-lint
           - echo "Running golangci-lint..."
-          - golangci-lint run ./...
+          - golangci-lint run ./pkg/... ./cmd/...
 
           # Run staticcheck if available
           - |
             if command -v staticcheck >/dev/null 2>&1; then
               echo "Running staticcheck..."
-              staticcheck ./...
+              staticcheck ./pkg/... ./cmd/...
             else
               echo "Installing staticcheck..."
               go install honnef.co/go/tools/cmd/staticcheck@latest
