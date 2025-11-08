@@ -1,8 +1,8 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I/usr/include
-#cgo LDFLAGS: -lmupdf -lmupdf-third -lharfbuzz -lfreetype -ljpeg -lpng -lz -ljbig2dec -lopenjp2 -lgumbo -lmujs -lm
+#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
+#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third  -lm
 
 #include <stdlib.h>
 #include <string.h>
@@ -164,12 +164,26 @@ pdf_page* go_mupdf_pdf_add_page(fz_context *ctx, pdf_document *doc, float width,
             pdf_dict_put_int(ctx, page_obj, PDF_NAME(Rotate), rotate);
         }
 
-        // Create simple resources
-        pdf_obj *resources = pdf_add_new_dict(ctx, doc, 1);
+        // Create resources with proper Font dictionary
+        pdf_obj *resources = pdf_add_new_dict(ctx, doc, 2);
+
+        // Add ProcSet
         pdf_obj *procset = pdf_new_array(ctx, doc, 2);
         pdf_array_push_name(ctx, procset, "PDF");
         pdf_array_push_name(ctx, procset, "Text");
         pdf_dict_put(ctx, resources, PDF_NAME(ProcSet), procset);
+
+        // Add Font dictionary with F1 -> Helvetica
+        pdf_obj *font_dict = pdf_add_new_dict(ctx, doc, 1);
+        pdf_obj *font_f1 = pdf_add_new_dict(ctx, doc, 3);
+        pdf_dict_put_name(ctx, font_f1, PDF_NAME(Type), "Font");
+        pdf_dict_put_name(ctx, font_f1, PDF_NAME(Subtype), "Type1");
+        pdf_dict_put_name(ctx, font_f1, PDF_NAME(BaseFont), "Helvetica");
+        pdf_obj *f1_name = pdf_new_name(ctx, "F1");
+        pdf_dict_put(ctx, font_dict, f1_name, font_f1);
+        pdf_drop_obj(ctx, f1_name);
+        pdf_dict_put(ctx, resources, PDF_NAME(Font), font_dict);
+
         pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), resources);
 
         // Create simple content stream

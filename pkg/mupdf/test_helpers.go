@@ -149,7 +149,9 @@ func createTestPDF(t *testing.T) string {
 		return ""
 	}
 
-	// Write a properly formatted PDF file
+	// Write a properly formatted PDF file with font resources
+	// This includes a proper Font dictionary to satisfy pdfcpu validation
+	// The xref table offsets must be exactly correct (10 digits with leading zeros)
 	content := `%PDF-1.4
 1 0 obj
 <<
@@ -171,7 +173,10 @@ endobj
 /MediaBox [0 0 612 792]
 /Contents 4 0 R
 /Resources <<
-  /ProcSet [/PDF /Text]
+/ProcSet [/PDF /Text]
+/Font <<
+/F1 5 0 R
+>>
 >>
 >>
 endobj
@@ -187,20 +192,28 @@ BT
 ET
 endstream
 endobj
+5 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
 xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000074 00000 n 
-0000000120 00000 n 
-0000000274 00000 n 
+0 6
+0000000000 65535 f
+0000000015 00000 n
+0000000068 00000 n
+0000000125 00000 n
+0000000281 00000 n
+0000000373 00000 n
 trailer
 <<
-/Size 5
+/Size 6
 /Root 1 0 R
 >>
 startxref
-373
+441
 %%EOF`
 
 	_, err = f.WriteString(content)

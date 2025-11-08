@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.exe
+*.test
+coverage.out
+*.prof
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+testdata/
+*.pdf
+!examples/**/*.pdf
+
+# Documentation build
+docs/_build
+docs/.doctrees
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+
+# CI/CD
+.ci/
+.circleci/
+.github/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+

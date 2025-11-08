@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: go-mupdf-test:latest
+    volumes:
+      # Mount source code for development (optional)
+      - .:/workspace
+      # Cache Go modules
+      - go-modules:/go/pkg/mod
+    environment:
+      - CGO_ENABLED=1
+      - GOOS=linux
+      - GOARCH=amd64
+    command: go test ./pkg/mupdf/ -v
+    # Override command for interactive shell:
+    # command: /bin/bash
+
+volumes:
+  go-modules:
+
