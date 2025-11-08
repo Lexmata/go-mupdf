@@ -15,7 +15,7 @@ definitions:
           - go
         script:
           - apt-get update
-          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
+          - apt-get install -y build-essential pkg-config unzip
           - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
           - |
             if [ ! -d "third_party/mupdf" ]; then
@@ -94,7 +94,7 @@ definitions:
           - go
         script:
           - apt-get update
-          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
+          - apt-get install -y build-essential pkg-config unzip
           - 'echo "Initial working directory: $(pwd)"'
           - |
             if [ ! -f "go.mod" ]; then
@@ -171,7 +171,7 @@ pipelines:
             - go
           script:
             - apt-get update
-            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
+            - apt-get install -y build-essential pkg-config unzip
             - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
             - |
               if [ ! -d "third_party/mupdf" ]; then
@@ -234,7 +234,7 @@ pipelines:
             - go
           script:
             - apt-get update
-            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
+            - apt-get install -y build-essential pkg-config unzip
             - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
             - |
               if [ ! -d "third_party/mupdf" ]; then
@@ -280,7 +280,7 @@ pipelines:
             - go
           script:
             - apt-get update
-            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip curl jq zip
+            - apt-get install -y build-essential pkg-config unzip curl jq zip
             - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
             - |
               if [ ! -d "third_party/mupdf" ]; then
@@ -385,7 +385,7 @@ pipelines:
               - go
             script:
               - apt-get update
-              - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
+              - apt-get install -y build-essential pkg-config unzip
               - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
               - |
                 if [ ! -d "third_party/mupdf" ]; then
