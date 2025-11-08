@@ -14,9 +14,19 @@ definitions:
         caches:
           - go
         script:
-          # Install MuPDF and all required dependencies (needed for go vet with CGO)
+          # Install build dependencies for MuPDF
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+
+          # Initialize git submodules and build MuPDF from source
+          - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+          - |
+            if [ ! -d "third_party/mupdf" ]; then
+              echo "MuPDF submodule not found, building will be handled by build.go"
+            else
+              echo "Building MuPDF from source..."
+              cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+            fi
 
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -60,9 +70,19 @@ definitions:
         caches:
           - go
         script:
-          # Install MuPDF and all required dependencies from package manager
+          # Install build dependencies for MuPDF
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+
+          # Initialize git submodules and build MuPDF from source
+          - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+          - |
+            if [ ! -d "third_party/mupdf" ]; then
+              echo "MuPDF submodule not found, building will be handled by build.go"
+            else
+              echo "Building MuPDF from source..."
+              cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+            fi
 
           # Set up Go environment
           - export GO111MODULE=on
@@ -74,13 +94,13 @@ definitions:
           # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
 
-          # Run all tests with race detection (using system MuPDF)
+          # Run all tests with race detection
           - echo "Running all tests with race detection..."
-          - go test -tags system_mupdf -v -race ./...
+          - go test -v -race ./...
 
-          # Run package tests with coverage (using system MuPDF)
+          # Run package tests with coverage
           - echo "Running package tests with coverage..."
-          - go test -tags system_mupdf -v -race -coverprofile=coverage.out ./pkg/mupdf/
+          - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
 
           # Generate coverage report
           - echo "Generating coverage report..."
@@ -114,9 +134,19 @@ pipelines:
             caches:
               - go
             script:
-            # Install MuPDF from package manager
+            # Install build dependencies for MuPDF
             - apt-get update
-            - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+
+            # Initialize git submodules and build MuPDF from source
+            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+            - |
+              if [ ! -d "third_party/mupdf" ]; then
+                echo "MuPDF submodule not found, building will be handled by build.go"
+              else
+                echo "Building MuPDF from source..."
+                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              fi
 
             # Set up Go environment
             - export GO111MODULE=on
@@ -128,13 +158,13 @@ pipelines:
             # Cache Go modules (will automatically download required toolchain if needed)
             - go mod download
 
-            # Run comprehensive tests (using system MuPDF)
+            # Run comprehensive tests
             - echo "Running comprehensive tests with race detection..."
-            - go test -tags system_mupdf -v -race -coverprofile=coverage.out ./...
+            - go test -v -race -coverprofile=coverage.out ./...
 
-            # Run benchmarks (using system MuPDF)
+            # Run benchmarks
             - echo "Running benchmarks..."
-            - go test -tags system_mupdf -v -bench=. -benchmem ./pkg/mupdf/
+            - go test -v -bench=. -benchmem ./pkg/mupdf/
 
             # Generate coverage report
             - echo "Generating coverage report..."
@@ -150,11 +180,11 @@ pipelines:
                 echo "CODECOV_TOKEN not set, skipping Codecov upload"
               fi
 
-            # Build examples or binaries if they exist (using system MuPDF)
+            # Build examples or binaries if they exist
             - |
               if [ -d "cmd" ]; then
                 echo "Building command line tools..."
-                go build -tags system_mupdf -v ./cmd/...
+                go build -v ./cmd/...
               fi
           artifacts:
             - coverage.html
@@ -169,22 +199,33 @@ pipelines:
           caches:
             - go
           script:
-            # Install MuPDF from package manager
+            # Install build dependencies for MuPDF
             - apt-get update
-            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+
+            # Initialize git submodules and build MuPDF from source
+            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+            - |
+              if [ ! -d "third_party/mupdf" ]; then
+                echo "MuPDF submodule not found, building will be handled by build.go"
+              else
+                echo "Building MuPDF from source..."
+                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              fi
 
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
+            - export GOTOOLCHAIN=auto
             - echo "Building release for tag: $TAG_NAME"
 
             # Cache Go modules
             - go mod download
 
-            # Run comprehensive test suite for release (using system MuPDF)
+            # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
-            - go test -tags system_mupdf -v -race -coverprofile=release-coverage.out ./...
+            - go test -v -race -coverprofile=release-coverage.out ./...
             - go tool cover -func=release-coverage.out
 
             # Upload coverage to Codecov
@@ -202,14 +243,25 @@ pipelines:
           caches:
             - go
           script:
-            # Install MuPDF and release tools from package manager
+            # Install build dependencies for MuPDF and release tools
             - apt-get update
-            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev curl jq zip
+            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev curl jq zip
+
+            # Initialize git submodules and build MuPDF from source
+            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+            - |
+              if [ ! -d "third_party/mupdf" ]; then
+                echo "MuPDF submodule not found, building will be handled by build.go"
+              else
+                echo "Building MuPDF from source..."
+                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              fi
 
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
+            - export GOTOOLCHAIN=auto
             - echo "Building release artifacts for tag: $TAG_NAME"
 
             # Cache Go modules
@@ -218,10 +270,10 @@ pipelines:
             # Create release directory structure
             - mkdir -p releases/{source,binaries,documentation}
 
-            # Build command line tools (using system MuPDF)
+            # Build command line tools
             - echo "Building command line tools..."
-            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags system_mupdf -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
-            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags system_mupdf -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
+            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
+            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
 
             # Create source archive
             - echo "Creating source archive..."
@@ -344,26 +396,37 @@ pipelines:
             caches:
               - go
             script:
-              # Install MuPDF from package manager
+              # Install build dependencies for MuPDF
               - apt-get update
-              - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
+              - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+
+              # Initialize git submodules and build MuPDF from source
+              - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+              - |
+                if [ ! -d "third_party/mupdf" ]; then
+                  echo "MuPDF submodule not found, building will be handled by build.go"
+                else
+                  echo "Building MuPDF from source..."
+                  cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+                fi
 
               # Set up Go environment
               - export GO111MODULE=on
               - export CGO_ENABLED=1
               - export GOOS=linux
               - export GOARCH=amd64
+              - export GOTOOLCHAIN=auto
 
               # Cache Go modules
               - go mod download
 
-              # Run tests with race detection (using system MuPDF)
+              # Run tests with race detection
               - echo "Running tests with race detection..."
-              - go test -tags system_mupdf -v -race ./...
+              - go test -v -race ./...
 
-              # Generate coverage for changed files (using system MuPDF)
+              # Generate coverage for changed files
               - echo "Generating coverage report for PR..."
-              - go test -tags system_mupdf -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
+              - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
               - go tool cover -func=pr-coverage.out
 
               # Upload coverage to Codecov

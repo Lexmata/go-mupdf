@@ -157,12 +157,14 @@ sudo apt-get install build-essential gcc g++ make pkg-config \
 
 ### Bitbucket Pipelines
 
-The pipeline uses system MuPDF libraries:
+The pipeline builds MuPDF from source:
 
 ```yaml
 script:
-  - apt-get install -y libmupdf-dev
-  - go test -tags system_mupdf ./pkg/mupdf/
+  - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+  - git submodule update --init --recursive
+  - cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+  - go test ./pkg/mupdf/
 ```
 
 ### GitHub Actions
@@ -174,8 +176,14 @@ For source-built MuPDF:
   with:
     submodules: recursive
 
+- name: Install build dependencies
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+
 - name: Build and test
   run: |
+    cd third_party/mupdf && make -j$(nproc) libs && cd ../..
     go test ./pkg/mupdf/
 ```
 
@@ -194,18 +202,4 @@ RUN cd third_party/mupdf && make -j$(nproc) libs
 2. **Use Makefile targets**: `make build` handles everything
 3. **Check submodule status**: `git submodule status`
 4. **Update submodules**: `git submodule update --remote` (when needed)
-
-## Alternative: System Libraries
-
-If you prefer to use system-installed MuPDF:
-
-```bash
-# Install system package
-sudo apt-get install libmupdf-dev
-
-# Build with system_mupdf tag
-go build -tags system_mupdf ./pkg/mupdf/
-```
-
-See [BUILD_CONFIGURATION.md](BUILD_CONFIGURATION.md) for details.
 

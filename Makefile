@@ -1,15 +1,13 @@
 # Makefile for Go MuPDF Wrapper
-# Provides convenient build targets for different configurations
+# Provides convenient build targets
 
-.PHONY: help build build-system test test-system clean mupdf-build
+.PHONY: help build test clean mupdf-build
 
 # Default: build with source-built MuPDF
 help:
 	@echo "Available targets:"
-	@echo "  make build          - Build with source-built MuPDF (default)"
-	@echo "  make build-system   - Build with system MuPDF libraries"
+	@echo "  make build          - Build with source-built MuPDF"
 	@echo "  make test           - Run tests with source-built MuPDF"
-	@echo "  make test-system    - Run tests with system MuPDF"
 	@echo "  make mupdf-build     - Build MuPDF from source"
 	@echo "  make clean          - Clean build artifacts"
 
@@ -22,31 +20,15 @@ mupdf-build:
 	fi
 	cd third_party/mupdf && make -j$$(nproc) libs
 
-# Build with source-built MuPDF (default)
+# Build with source-built MuPDF
 build: mupdf-build
 	@echo "Building Go wrapper with source-built MuPDF..."
 	go build ./pkg/mupdf/
 
-# Build with system MuPDF
-build-system:
-	@echo "Building Go wrapper with system MuPDF libraries..."
-	@if [ ! -f /usr/include/mupdf/fitz.h ]; then \
-		echo "Warning: System MuPDF not found. Install with: sudo apt-get install libmupdf-dev"; \
-	fi
-	go build -tags system_mupdf ./pkg/mupdf/
-
-# Test with source-built MuPDF (default)
+# Test with source-built MuPDF
 test: mupdf-build
 	@echo "Running tests with source-built MuPDF..."
 	go test ./pkg/mupdf/ -v
-
-# Test with system MuPDF
-test-system:
-	@echo "Running tests with system MuPDF libraries..."
-	@if [ ! -f /usr/include/mupdf/fitz.h ]; then \
-		echo "Warning: System MuPDF not found. Install with: sudo apt-get install libmupdf-dev"; \
-	fi
-	go test -tags system_mupdf ./pkg/mupdf/ -v
 
 # Clean build artifacts
 clean:

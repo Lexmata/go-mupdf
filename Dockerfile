@@ -63,7 +63,7 @@ RUN if [ -d "third_party/mupdf" ]; then \
     fi
 
 # Set up environment for CGO
-# We use source-built MuPDF by default (no system_mupdf build tag)
+# We always use source-built MuPDF from third_party/mupdf
 ENV CGO_ENABLED=1 \
     PKG_CONFIG_PATH=/usr/lib/pkgconfig \
     MUPDF_BUILD_DIR=/workspace/third_party/mupdf
