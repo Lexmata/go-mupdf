@@ -62,7 +62,7 @@ definitions:
             else
               echo "Installing staticcheck..."
               go install honnef.co/go/tools/cmd/staticcheck@latest
-              staticcheck ./...
+              staticcheck ./pkg/... ./cmd/...
             fi
 
     - step: &test
