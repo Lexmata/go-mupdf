@@ -604,7 +604,9 @@ func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDF
 	// So we'll extract to a temp dir and move the file
 	tempDir := filepath.Dir(outputPath)
 	tempExtractDir := filepath.Join(tempDir, "temp_extract")
-	os.MkdirAll(tempExtractDir, 0755)
+	if err := os.MkdirAll(tempExtractDir, 0755); err != nil {
+		return Error{message: fmt.Sprintf("failed to create temp directory: %v", err)}
+	}
 	defer os.RemoveAll(tempExtractDir)
 
 	err := api.ExtractPagesFile(inputPath, tempExtractDir, pageRanges, conf)

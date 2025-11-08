@@ -529,7 +529,10 @@ func TestValidatePDF(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create corrupted file: %v", err)
 		}
-		f.WriteString("This is not a valid PDF file")
+		if _, err := f.WriteString("This is not a valid PDF file"); err != nil {
+			f.Close()
+			t.Fatalf("Failed to write corrupted content: %v", err)
+		}
 		f.Close()
 
 		err = ValidatePDF(corruptedPath, nil)
