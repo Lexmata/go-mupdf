@@ -1,4 +1,4 @@
-image: golang:1.23
+image: golang:1.24
 
 definitions:
   caches:
@@ -21,7 +21,7 @@ definitions:
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
-          - export GOTOOLCHAIN=local
+          - export GOTOOLCHAIN=auto
           - export GOFLAGS=-buildvcs=false
 
           # Check code formatting
@@ -69,9 +69,9 @@ definitions:
           - export CGO_ENABLED=1
           - export GOOS=linux
           - export GOARCH=amd64
-          - export GOTOOLCHAIN=local
+          - export GOTOOLCHAIN=auto
 
-          # Cache Go modules
+          # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
 
           # Run all tests with race detection
@@ -123,9 +123,9 @@ pipelines:
             - export CGO_ENABLED=1
             - export GOOS=linux
             - export GOARCH=amd64
-            - export GOTOOLCHAIN=local
+            - export GOTOOLCHAIN=auto
 
-            # Cache Go modules
+            # Cache Go modules (will automatically download required toolchain if needed)
             - go mod download
 
             # Run comprehensive tests
