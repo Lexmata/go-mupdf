@@ -11,6 +11,10 @@ import (
 // TestComprehensive is a comprehensive test that exercises multiple aspects of the library
 func TestComprehensive(t *testing.T) {
 	requireMuPDF(t)
+	// Skip in CI/CD environments due to concurrency issues
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping TestComprehensive in CI due to concurrency issues")
+	}
 	skipIfCIorShort(t)
 
 	// Create context
