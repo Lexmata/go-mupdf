@@ -74,13 +74,13 @@ definitions:
           # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
 
-          # Run all tests with race detection
+          # Run all tests with race detection (using system MuPDF)
           - echo "Running all tests with race detection..."
-          - go test -v -race ./...
+          - go test -tags system_mupdf -v -race ./...
 
-          # Run package tests with coverage
+          # Run package tests with coverage (using system MuPDF)
           - echo "Running package tests with coverage..."
-          - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
+          - go test -tags system_mupdf -v -race -coverprofile=coverage.out ./pkg/mupdf/
 
           # Generate coverage report
           - echo "Generating coverage report..."
@@ -128,13 +128,13 @@ pipelines:
             # Cache Go modules (will automatically download required toolchain if needed)
             - go mod download
 
-            # Run comprehensive tests
+            # Run comprehensive tests (using system MuPDF)
             - echo "Running comprehensive tests with race detection..."
-            - go test -v -race -coverprofile=coverage.out ./...
+            - go test -tags system_mupdf -v -race -coverprofile=coverage.out ./...
 
-            # Run benchmarks
+            # Run benchmarks (using system MuPDF)
             - echo "Running benchmarks..."
-            - go test -v -bench=. -benchmem ./pkg/mupdf/
+            - go test -tags system_mupdf -v -bench=. -benchmem ./pkg/mupdf/
 
             # Generate coverage report
             - echo "Generating coverage report..."
@@ -150,11 +150,11 @@ pipelines:
                 echo "CODECOV_TOKEN not set, skipping Codecov upload"
               fi
 
-            # Build examples or binaries if they exist
+            # Build examples or binaries if they exist (using system MuPDF)
             - |
               if [ -d "cmd" ]; then
                 echo "Building command line tools..."
-                go build -v ./cmd/...
+                go build -tags system_mupdf -v ./cmd/...
               fi
           artifacts:
             - coverage.html
@@ -182,9 +182,9 @@ pipelines:
             # Cache Go modules
             - go mod download
 
-            # Run comprehensive test suite for release
+            # Run comprehensive test suite for release (using system MuPDF)
             - echo "Running comprehensive test suite..."
-            - go test -v -race -coverprofile=release-coverage.out ./...
+            - go test -tags system_mupdf -v -race -coverprofile=release-coverage.out ./...
             - go tool cover -func=release-coverage.out
 
             # Upload coverage to Codecov
@@ -218,10 +218,10 @@ pipelines:
             # Create release directory structure
             - mkdir -p releases/{source,binaries,documentation}
 
-            # Build command line tools
+            # Build command line tools (using system MuPDF)
             - echo "Building command line tools..."
-            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
-            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
+            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags system_mupdf -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
+            - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags system_mupdf -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
 
             # Create source archive
             - echo "Creating source archive..."
@@ -357,13 +357,13 @@ pipelines:
               # Cache Go modules
               - go mod download
 
-              # Run tests with race detection
+              # Run tests with race detection (using system MuPDF)
               - echo "Running tests with race detection..."
-              - go test -v -race ./...
+              - go test -tags system_mupdf -v -race ./...
 
-              # Generate coverage for changed files
+              # Generate coverage for changed files (using system MuPDF)
               - echo "Generating coverage report for PR..."
-              - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
+              - go test -tags system_mupdf -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
               - go tool cover -func=pr-coverage.out
 
               # Upload coverage to Codecov
