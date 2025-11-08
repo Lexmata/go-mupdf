@@ -16,7 +16,7 @@ definitions:
         script:
           # Install build dependencies for MuPDF
           - apt-get update
-          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
 
           # Initialize git submodules and build MuPDF from source
           - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
@@ -72,7 +72,7 @@ definitions:
         script:
           # Install build dependencies for MuPDF
           - apt-get update
-          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+          - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
 
           # Initialize git submodules and build MuPDF from source
           - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
@@ -136,7 +136,7 @@ pipelines:
             script:
             # Install build dependencies for MuPDF
             - apt-get update
-            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
 
             # Initialize git submodules and build MuPDF from source
             - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
@@ -201,7 +201,7 @@ pipelines:
           script:
             # Install build dependencies for MuPDF
             - apt-get update
-            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
 
             # Initialize git submodules and build MuPDF from source
             - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
@@ -245,7 +245,7 @@ pipelines:
           script:
             # Install build dependencies for MuPDF and release tools
             - apt-get update
-            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev curl jq zip
+            - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip curl jq zip
 
             # Initialize git submodules and build MuPDF from source
             - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
@@ -398,7 +398,7 @@ pipelines:
             script:
               # Install build dependencies for MuPDF
               - apt-get update
-              - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+              - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
 
               # Initialize git submodules and build MuPDF from source
               - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
