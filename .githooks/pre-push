@@ -6,6 +6,22 @@
 
 echo "🔍 Running pre-push checks..."
 
+# Check if we're pushing tags (refs/tags/*) instead of branches or deleting refs
+# Read stdin to get what's being pushed
+while read local_ref local_sha remote_ref remote_sha; do
+    # Check if deleting (local_sha is all zeros)
+    if [[ "$local_sha" =~ ^0+$ ]]; then
+        # Deleting a ref, skip all checks
+        echo "🗑️  Deleting ref, skipping checks..."
+        exit 0
+    fi
+    if [[ "$remote_ref" =~ ^refs/tags/ ]]; then
+        # Pushing a tag, set flag to skip merge validation
+        export SKIP_MERGE_CHECK=true
+        break
+    fi
+done
+
 # Get the path to the pre-commit hook
 PRE_COMMIT_HOOK="$(git rev-parse --git-path hooks/pre-commit)"
 

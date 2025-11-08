@@ -5,7 +5,13 @@
 
 # Don't use set -e, we want to track failures manually
 
-echo "🔍 Running pre-commit checks..."
+# If called from pre-push and pushing tags, skip merge branch checks
+# This is indicated by SKIP_MERGE_CHECK environment variable set by pre-push hook
+if [ "$SKIP_MERGE_CHECK" = "true" ]; then
+    echo "🔍 Running pre-commit checks (skipping merge validation for tag push)..."
+else
+    echo "🔍 Running pre-commit checks..."
+fi
 
 # First, check git-flow branch rules
 echo ""
@@ -57,7 +63,9 @@ else
 
     # Main branch protection
     if is_main; then
-        if [ "$IS_MERGE" = true ]; then
+        if [ "$SKIP_MERGE_CHECK" = "true" ]; then
+            echo -e "${GREEN}✅ Skipping merge validation (tag push)${NC}"
+        elif [ "$IS_MERGE" = true ]; then
             # Check if merge is from develop or a release branch
             if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop|^release/|^remotes/origin/release/)"; then
                 echo -e "${GREEN}✅ Merge from ${MERGE_BRANCH} to main is allowed${NC}"
@@ -81,7 +89,9 @@ else
             exit 1
         fi
     elif is_develop; then
-        if [ "$IS_MERGE" = true ]; then
+        if [ "$SKIP_MERGE_CHECK" = "true" ]; then
+            echo -e "${GREEN}✅ Skipping merge validation (tag push)${NC}"
+        elif [ "$IS_MERGE" = true ]; then
             # Check if merge is from a git-flow branch (feature/bugfix/hotfix/release)
             if echo "$MERGE_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
                 echo -e "${GREEN}✅ Merge from git-flow branch to develop is allowed${NC}"
