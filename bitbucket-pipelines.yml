@@ -26,7 +26,6 @@ definitions:
               echo "Building MuPDF from source..."
               cd third_party/mupdf && make -j$(nproc) libs && cd ../..
             fi
-
           # Ensure we're in the project root
           - echo "Current directory: $(pwd)"
           - |
@@ -37,13 +36,11 @@ definitions:
               exit 1
             fi
           - echo "Project root verified: $(pwd)"
-
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
           - export GOTOOLCHAIN=auto
           - export GOFLAGS=-buildvcs=false
-
           # Check code formatting
           - echo "Checking code formatting with gofmt..."
           - |
@@ -55,7 +52,6 @@ definitions:
             else
               echo "✅ All files are properly formatted"
             fi
-
           # Run go vet
           - echo "Running go vet..."
           - echo "Checking for cmd directory..."
@@ -68,7 +64,6 @@ definitions:
               echo "cmd directory not found or empty, running go vet on pkg only"
               go vet ./pkg/...
             fi
-
           # Run golangci-lint
           - echo "Running golangci-lint..."
           - |
@@ -79,7 +74,6 @@ definitions:
               echo "cmd directory not found or empty, running golangci-lint on pkg only"
               golangci-lint run ./pkg/...
             fi
-
           # Run staticcheck if available
           - |
             if command -v staticcheck >/dev/null 2>&1; then
@@ -102,7 +96,6 @@ definitions:
                 staticcheck ./pkg/...
               fi
             fi
-
     - step: &test
         name: Run Tests
         caches:
@@ -121,7 +114,6 @@ definitions:
               exit 1
             fi
           - echo "Project root verified: $(pwd)"
-
           # Initialize git submodules and build MuPDF from source
           - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
           - |
@@ -136,21 +128,17 @@ definitions:
                 cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
               fi
             fi
-
           # Set up Go environment
           - export GO111MODULE=on
           - export CGO_ENABLED=1
           - export GOOS=linux
           - export GOARCH=amd64
           - export GOTOOLCHAIN=auto
-
           # Ensure we're still in project root
           - cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
           - echo "Final working directory: $(pwd)"
-
           # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
-
           # Verify working directory and paths
           - echo "Current directory: $(pwd)"
           - echo "Verifying project structure..."
@@ -165,20 +153,16 @@ definitions:
           - go list -m || echo "Failed to list module"
           - echo "Checking package can be listed..."
           - go list ./pkg/mupdf || echo "Failed to list package"
-
           # Run all tests with race detection
           - echo "Running all tests with race detection..."
           - go test -v -race ./pkg/mupdf/
-
           # Run package tests with coverage
           - echo "Running package tests with coverage..."
           - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
-
           # Generate coverage report
           - echo "Generating coverage report..."
           - go tool cover -html=coverage.out -o coverage.html
           - go tool cover -func=coverage.out
-
           # Upload coverage to Codecov
           - echo "Uploading coverage to Codecov..."
           - |
@@ -218,17 +202,14 @@ pipelines:
                 echo "Building MuPDF from source..."
                 cd third_party/mupdf && make -j$(nproc) libs && cd ../..
               fi
-
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export GOOS=linux
             - export GOARCH=amd64
             - export GOTOOLCHAIN=auto
-
             # Cache Go modules (will automatically download required toolchain if needed)
             - go mod download
-
             # Verify working directory and paths
             - echo "Current directory: $(pwd)"
             - echo "Verifying project structure..."
@@ -243,20 +224,16 @@ pipelines:
             - go list -m || echo "Failed to list module"
             - echo "Checking package can be listed..."
             - go list ./pkg/mupdf || echo "Failed to list package"
-
             # Run comprehensive tests with coverage
             - echo "Running comprehensive tests with race detection..."
             - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
-
             # Run benchmarks
             - echo "Running benchmarks..."
             - go test -v -bench=. -benchmem ./pkg/mupdf/
-
             # Generate coverage report
             - echo "Generating coverage report..."
             - go tool cover -html=coverage.out -o coverage.html
             - go tool cover -func=coverage.out
-
             # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
@@ -265,7 +242,6 @@ pipelines:
               else
                 echo "CODECOV_TOKEN not set, skipping Codecov upload"
               fi
-
             # Build examples or binaries if they exist
             - |
               if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
@@ -299,17 +275,14 @@ pipelines:
                 echo "Building MuPDF from source..."
                 cd third_party/mupdf && make -j$(nproc) libs && cd ../..
               fi
-
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
             - export GOTOOLCHAIN=auto
             - echo "Building release for tag: $TAG_NAME"
-
             # Cache Go modules
             - go mod download
-
             # Verify working directory and paths
             - echo "Current directory: $(pwd)"
             - echo "Verifying project structure..."
@@ -324,12 +297,10 @@ pipelines:
             - go list -m || echo "Failed to list module"
             - echo "Checking package can be listed..."
             - go list ./pkg/mupdf || echo "Failed to list package"
-
             # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
             - go test -v -race -coverprofile=release-coverage.out ./pkg/mupdf/
             - go tool cover -func=release-coverage.out
-
             # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
@@ -357,33 +328,26 @@ pipelines:
                 echo "Building MuPDF from source..."
                 cd third_party/mupdf && make -j$(nproc) libs && cd ../..
               fi
-
             # Set up Go environment
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
             - export GOTOOLCHAIN=auto
             - echo "Building release artifacts for tag: $TAG_NAME"
-
             # Cache Go modules
             - go mod download
-
             # Create release directory structure
             - mkdir -p releases/{source,binaries,documentation}
-
             # Build command line tools
             - echo "Building command line tools..."
             - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
             - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
-
             # Create source archive
             - echo "Creating source archive..."
             - git archive --format=tar.gz --prefix=go-mupdf-$TAG_NAME/ $TAG_NAME > releases/source/go-mupdf-$TAG_NAME-source.tar.gz
-
             # Generate release documentation package
             - echo "Packaging documentation..."
             - tar -czf releases/documentation/go-mupdf-$TAG_NAME-docs.tar.gz docs/ examples/ README.md LICENSE CHANGELOG.md
-
             # Create binary archives
             - |
               cd releases/binaries
@@ -396,69 +360,51 @@ pipelines:
                 echo "Created create-test-pdf binary archive"
               fi
               cd ../..
-
             # Generate release notes from changelog
             - echo "Generating release notes..."
             - |
               cat > releases/RELEASE_NOTES.md << EOF
               # Go MuPDF $TAG_NAME Release
-
               **Release Date**: $(date +"%Y-%m-%d")
               **Git Tag**: $TAG_NAME
               **Commit**: $BITBUCKET_COMMIT
-
               ## Installation
-
               ### Go Module
               \`\`\`bash
               go get bitbucket.org/lexmata/go-mupdf@$TAG_NAME
               \`\`\`
-
               ### Binary Downloads
               - [Linux AMD64 Tools](releases/binaries/)
               - [Source Code](releases/source/)
               - [Documentation](releases/documentation/)
-
               ## What's Included
-
               - **Source Code**: Complete Go MuPDF wrapper with MuPDF library
               - **Documentation**: Comprehensive guides and API reference
               - **Examples**: Working code examples and tutorials
               - **Command Line Tools**: go-mupdf and create-test-pdf utilities
               - **Tests**: Full test suite with 81.8% coverage
-
               ## System Requirements
-
               - Go 1.21 or later
               - C compiler (GCC/Clang/MSVC)
               - Make build system
               - System dependencies (see installation guide)
-
               ## Changelog
-
               $(grep -A 50 "## \[$TAG_NAME\]" CHANGELOG.md | head -50)
-
               ## Verification
-
               ### Checksums
               \`\`\`
               $(find releases -type f -name "*.tar.gz" -exec sha256sum {} \;)
               \`\`\`
-
               ### Test Coverage
               \`\`\`
               $(go tool cover -func=release-coverage.out | tail -1)
               \`\`\`
-
               ---
-
               For support, documentation, and examples, visit the [repository](https://bitbucket.org/lexmata/go-mupdf).
               EOF
-
             # Create checksums
             - echo "Generating checksums..."
             - cd releases && find . -type f -name "*.tar.gz" -exec sha256sum {} \; > SHA256SUMS && cd ..
-
             # Log release summary
             - echo "=== Release Summary ==="
             - echo "Tag: $TAG_NAME"
@@ -509,17 +455,14 @@ pipelines:
                   echo "Building MuPDF from source..."
                   cd third_party/mupdf && make -j$(nproc) libs && cd ../..
                 fi
-
               # Set up Go environment
               - export GO111MODULE=on
               - export CGO_ENABLED=1
               - export GOOS=linux
               - export GOARCH=amd64
               - export GOTOOLCHAIN=auto
-
               # Cache Go modules
               - go mod download
-
               # Verify working directory and paths
               - echo "Current directory: $(pwd)"
               - echo "Verifying project structure..."
@@ -534,16 +477,13 @@ pipelines:
               - go list -m || echo "Failed to list module"
               - echo "Checking package can be listed..."
               - go list ./pkg/mupdf || echo "Failed to list package"
-
               # Run tests with race detection
               - echo "Running tests with race detection..."
               - go test -v -race ./pkg/mupdf/
-
               # Generate coverage for changed files
               - echo "Generating coverage report for PR..."
               - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
               - go tool cover -func=pr-coverage.out
-
               # Upload coverage to Codecov
               - echo "Uploading coverage to Codecov..."
               - |
