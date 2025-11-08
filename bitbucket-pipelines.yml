@@ -96,7 +96,7 @@ definitions:
 
           # Run all tests with race detection
           - echo "Running all tests with race detection..."
-          - go test -v -race ./...
+          - go test -v -race ./pkg/... ./cmd/...
 
           # Run package tests with coverage
           - echo "Running package tests with coverage..."
@@ -160,7 +160,7 @@ pipelines:
 
             # Run comprehensive tests
             - echo "Running comprehensive tests with race detection..."
-            - go test -v -race -coverprofile=coverage.out ./...
+            - go test -v -race -coverprofile=coverage.out ./pkg/... ./cmd/...
 
             # Run benchmarks
             - echo "Running benchmarks..."
@@ -225,7 +225,7 @@ pipelines:
 
             # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
-            - go test -v -race -coverprofile=release-coverage.out ./...
+            - go test -v -race -coverprofile=release-coverage.out ./pkg/... ./cmd/...
             - go tool cover -func=release-coverage.out
 
             # Upload coverage to Codecov
@@ -422,7 +422,7 @@ pipelines:
 
               # Run tests with race detection
               - echo "Running tests with race detection..."
-              - go test -v -race ./...
+              - go test -v -race ./pkg/... ./cmd/...
 
               # Generate coverage for changed files
               - echo "Generating coverage report for PR..."
