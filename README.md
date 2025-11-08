@@ -8,6 +8,7 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 
 ## Features
 
+### Core MuPDF Features
 - 📄 **PDF Document Operations**: Open, read, and manipulate PDF files
 - 📝 **Page Management**: Load pages, extract bounds, and handle page operations
 - 🔤 **Text Extraction**: Extract text content from PDF pages
@@ -17,6 +18,16 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 - 🔒 **Thread Safe**: Concurrent operations supported
 - 🧪 **Well Tested**: 81.8% test coverage with 123+ test functions
 - 🛡️ **Error Resilient**: Robust error handling and edge case coverage
+
+### PDFCPU Integration Features
+- 🔀 **PDF Merging**: Combine multiple PDF files into one document
+- ✂️ **PDF Splitting**: Split PDFs by page ranges into multiple files
+- 🔐 **PDF Encryption/Decryption**: Add or remove password protection with fine-grained permissions
+- 💧 **PDF Watermarking**: Add text or image watermarks to PDF documents
+- ✅ **PDF Validation**: Verify PDF structure, integrity, and compliance
+- 🗜️ **PDF Optimization**: Compress and optimize PDF file size
+- 🔄 **Page Operations**: Rotate pages, extract specific pages, and manipulate page ranges
+- 📊 **PDF Metadata**: Retrieve comprehensive document information and metadata
 
 ## Quick Start
 
@@ -28,31 +39,42 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 
 ### Installation
 
-#### Option 1: Go Module (Recommended)
+#### Option 1: Using go get (Recommended)
 
-For most users, install directly using Go modules:
+✅ **The build script automatically downloads the MuPDF submodule when needed.**
 
 ```bash
+# Install the library
 go get bitbucket.org/lexmata/go-mupdf@latest
+
+# Use in your project
+go build ./your-project
 ```
+
+**Requirements**:
+- Git must be installed
+- Network access (for downloading MuPDF submodule)
+- The build script automatically handles submodule download and MuPDF compilation
 
 **Note**: This project requires CGO and system dependencies. See [System Dependencies](#system-dependencies) below.
 
-#### Option 2: From Source
+#### Option 2: Clone with Submodules
 
-For development or custom builds:
+For development or if you prefer manual control:
 
 ```bash
 # Clone with submodules
 git clone --recurse-submodules https://bitbucket.org/lexmata/go-mupdf.git
 cd go-mupdf
 
-# Build MuPDF library
-cd third_party/mupdf && make && cd ../..
+# Build (MuPDF will be built automatically)
+go build ./pkg/mupdf/
 
 # Test the installation
 go test ./pkg/mupdf/
 ```
+
+For detailed installation instructions, see [Installation Guide](docs/INSTALLATION.md).
 
 #### System Dependencies
 
@@ -185,43 +207,92 @@ func main() {
 package main
 
 import (
-    "log"
+	"log"
 
-    "bitbucket.org/lexmata/go-mupdf/pkg/mupdf"
+	"bitbucket.org/lexmata/go-mupdf/pkg/mupdf"
 )
 
 func main() {
-    ctx, err := mupdf.NewContext()
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer ctx.Drop()
+	ctx, err := mupdf.NewContext()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ctx.Drop()
 
-    writer, err := mupdf.NewPDFWriter(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer writer.Close()
+	writer, err := mupdf.NewPDFWriter(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer writer.Close()
 
-    // Create various PDF objects
-    objects := []interface{}{
-        nil,           // Null object
-        true,          // Boolean
-        42,            // Integer
-        3.14159,       // Float
-        "Hello PDF",   // String
-    }
+	// Create various PDF objects
+	objects := []interface{}{
+		nil,           // Null object
+		true,          // Boolean
+		42,            // Integer
+		3.14159,       // Float
+		"Hello PDF",   // String
+	}
 
-    for i, value := range objects {
-        obj, err := writer.NewPDFObject(value)
-        if err != nil {
-            log.Printf("Failed to create object %d: %v", i, err)
-            continue
-        }
-        defer obj.Drop()
+	for i, value := range objects {
+		obj, err := writer.NewPDFObject(value)
+		if err != nil {
+			log.Printf("Failed to create object %d: %v", i, err)
+			continue
+		}
+		defer obj.Drop()
 
-        log.Printf("Created PDF object %d: %T", i, value)
-    }
+		log.Printf("Created PDF object %d: %T", i, value)
+	}
+}
+```
+
+#### PDF Manipulation with PDFCPU
+
+```go
+package main
+
+import (
+	"log"
+
+	"bitbucket.org/lexmata/go-mupdf/pkg/mupdf"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+)
+
+func main() {
+	// Merge multiple PDFs
+	files := []string{"file1.pdf", "file2.pdf", "file3.pdf"}
+	err := mupdf.MergePDFs(files, "merged.pdf", nil)
+	if err != nil {
+		log.Fatalf("Failed to merge PDFs: %v", err)
+	}
+
+	// Split PDF by page ranges
+	outputFiles, err := mupdf.SplitPDF("input.pdf", "output/", []string{"1-5", "6-10"}, nil)
+	if err != nil {
+		log.Fatalf("Failed to split PDF: %v", err)
+	}
+	log.Printf("Created %d split files", len(outputFiles))
+
+	// Encrypt PDF with password
+	err = mupdf.EncryptPDF("input.pdf", "encrypted.pdf", "user123", "owner123",
+		model.PermissionsPrint|model.PermissionModify, nil)
+	if err != nil {
+		log.Fatalf("Failed to encrypt PDF: %v", err)
+	}
+
+	// Add watermark
+	err = mupdf.AddWatermark("input.pdf", "watermarked.pdf", "CONFIDENTIAL", "", nil)
+	if err != nil {
+		log.Fatalf("Failed to add watermark: %v", err)
+	}
+
+	// Get PDF information
+	info, err := mupdf.GetPDFInfo("document.pdf", nil)
+	if err != nil {
+		log.Fatalf("Failed to get PDF info: %v", err)
+	}
+	log.Printf("PDF Info: %+v", info)
 }
 ```
 
@@ -274,6 +345,31 @@ func (writer *PDFWriter) Close()
 func (writer *PDFWriter) AddPage(width, height float64) (*PDFPage, error)
 func (writer *PDFWriter) Save(filename string) error
 func (writer *PDFWriter) NewPDFObject(value interface{}) (*PDFObject, error)
+```
+
+#### PDFCPU Functions
+Advanced PDF manipulation operations via PDFCPU integration.
+
+```go
+// PDF Merging and Splitting
+func MergePDFs(inputPaths []string, outputPath string, config *PDFCPUConfig) error
+func SplitPDF(inputPath, outputDir string, pageRanges []string, config *PDFCPUConfig) ([]string, error)
+
+// PDF Security
+func EncryptPDF(inputPath, outputPath, userPassword, ownerPassword string, permissions model.PermissionFlags, config *PDFCPUConfig) error
+func DecryptPDF(inputPath, outputPath, password string, config *PDFCPUConfig) error
+
+// PDF Enhancement
+func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config *PDFCPUConfig) error
+func OptimizePDF(inputPath, outputPath string, config *PDFCPUConfig) error
+
+// PDF Operations
+func RotatePages(inputPath, outputPath string, rotation int, pageRanges []string, config *PDFCPUConfig) error
+func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDFCPUConfig) error
+
+// PDF Information
+func ValidatePDF(pdfPath string, config *PDFCPUConfig) error
+func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, error)
 ```
 
 ### Data Types
@@ -674,9 +770,10 @@ Tests are organized to directly mirror the module structure:
 
 ---
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **MuPDF Version**: 1.26.3
+**PDFCPU Version**: 0.11.1
 **Go Version**: 1.19+
-**Architecture**: Modular design with 10 focused source files
-**Test Coverage**: 81.8% with 21 organized test files
+**Architecture**: Modular design with integrated PDFCPU functionality
+**Test Coverage**: 81.8% with comprehensive PDFCPU test suite
 **Last Updated**: 2024
