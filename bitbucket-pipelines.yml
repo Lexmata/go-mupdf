@@ -28,6 +28,17 @@ definitions:
               cd third_party/mupdf && make -j$(nproc) libs && cd ../..
             fi
 
+          # Ensure we're in the project root
+          - echo "Current directory: $(pwd)"
+          - |
+            if [ ! -f "go.mod" ]; then
+              echo "ERROR: go.mod not found in current directory"
+              echo "Current directory contents:"
+              ls -la
+              exit 1
+            fi
+          - echo "Project root verified: $(pwd)"
+
           # Install linting tools
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
@@ -48,21 +59,49 @@ definitions:
 
           # Run go vet
           - echo "Running go vet..."
-          - go vet ./pkg/... ./cmd/...
+          - echo "Checking for cmd directory..."
+          - ls -la cmd 2>/dev/null || echo "cmd directory not found"
+          - |
+            if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+              echo "cmd directory found with Go files, running go vet on pkg and cmd"
+              go vet ./pkg/... ./cmd/...
+            else
+              echo "cmd directory not found or empty, running go vet on pkg only"
+              go vet ./pkg/...
+            fi
 
           # Run golangci-lint
           - echo "Running golangci-lint..."
-          - golangci-lint run ./pkg/... ./cmd/...
+          - |
+            if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+              echo "cmd directory found with Go files, running golangci-lint on pkg and cmd"
+              golangci-lint run ./pkg/... ./cmd/...
+            else
+              echo "cmd directory not found or empty, running golangci-lint on pkg only"
+              golangci-lint run ./pkg/...
+            fi
 
           # Run staticcheck if available
           - |
             if command -v staticcheck >/dev/null 2>&1; then
               echo "Running staticcheck..."
-              staticcheck ./pkg/... ./cmd/...
+              if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+                echo "cmd directory found with Go files, running staticcheck on pkg and cmd"
+                staticcheck ./pkg/... ./cmd/...
+              else
+                echo "cmd directory not found or empty, running staticcheck on pkg only"
+                staticcheck ./pkg/...
+              fi
             else
               echo "Installing staticcheck..."
               go install honnef.co/go/tools/cmd/staticcheck@latest
-              staticcheck ./pkg/... ./cmd/...
+              if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+                echo "cmd directory found with Go files, running staticcheck on pkg and cmd"
+                staticcheck ./pkg/... ./cmd/...
+              else
+                echo "cmd directory not found or empty, running staticcheck on pkg only"
+                staticcheck ./pkg/...
+              fi
             fi
 
     - step: &test
@@ -74,6 +113,17 @@ definitions:
           - apt-get update
           - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
 
+          # Ensure we're in the project root
+          - echo "Initial working directory: $(pwd)"
+          - |
+            if [ ! -f "go.mod" ]; then
+              echo "ERROR: go.mod not found in current directory"
+              echo "Current directory contents:"
+              ls -la
+              exit 1
+            fi
+          - echo "Project root verified: $(pwd)"
+
           # Initialize git submodules and build MuPDF from source
           - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
           - |
@@ -82,6 +132,11 @@ definitions:
             else
               echo "Building MuPDF from source..."
               cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              # Verify we're back in project root
+              if [ ! -f "../go.mod" ] && [ ! -f "go.mod" ]; then
+                echo "ERROR: Lost project root after MuPDF build"
+                cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
+              fi
             fi
 
           # Set up Go environment
@@ -91,15 +146,27 @@ definitions:
           - export GOARCH=amd64
           - export GOTOOLCHAIN=auto
 
+          # Ensure we're still in project root
+          - cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          - echo "Final working directory: $(pwd)"
+
           # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
 
           # Verify working directory and paths
           - echo "Current directory: $(pwd)"
-          - echo "Checking package path..."
+          - echo "Verifying project structure..."
+          - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
+          - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
+          - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+          - echo "Checking package files..."
           - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
-          - echo "Checking third_party/mupdf..."
+          - echo "Checking MuPDF libraries..."
           - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+          - echo "Verifying Go module path..."
+          - go list -m || echo "Failed to list module"
+          - echo "Checking package can be listed..."
+          - go list ./pkg/mupdf || echo "Failed to list package"
 
           # Run all tests with race detection
           - echo "Running all tests with race detection..."
@@ -165,6 +232,21 @@ pipelines:
             # Cache Go modules (will automatically download required toolchain if needed)
             - go mod download
 
+            # Verify working directory and paths
+            - echo "Current directory: $(pwd)"
+            - echo "Verifying project structure..."
+            - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
+            - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
+            - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+            - echo "Checking package files..."
+            - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+            - echo "Checking MuPDF libraries..."
+            - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+            - echo "Verifying Go module path..."
+            - go list -m || echo "Failed to list module"
+            - echo "Checking package can be listed..."
+            - go list ./pkg/mupdf || echo "Failed to list package"
+
             # Run comprehensive tests with coverage
             - echo "Running comprehensive tests with race detection..."
             - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
@@ -189,9 +271,11 @@ pipelines:
 
             # Build examples or binaries if they exist
             - |
-              if [ -d "cmd" ]; then
+              if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
                 echo "Building command line tools..."
                 go build -v ./cmd/...
+              else
+                echo "cmd directory not found or contains no Go files, skipping build"
               fi
           artifacts:
             - coverage.html
@@ -229,6 +313,21 @@ pipelines:
 
             # Cache Go modules
             - go mod download
+
+            # Verify working directory and paths
+            - echo "Current directory: $(pwd)"
+            - echo "Verifying project structure..."
+            - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
+            - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
+            - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+            - echo "Checking package files..."
+            - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+            - echo "Checking MuPDF libraries..."
+            - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+            - echo "Verifying Go module path..."
+            - go list -m || echo "Failed to list module"
+            - echo "Checking package can be listed..."
+            - go list ./pkg/mupdf || echo "Failed to list package"
 
             # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
@@ -426,6 +525,21 @@ pipelines:
 
               # Cache Go modules
               - go mod download
+
+              # Verify working directory and paths
+              - echo "Current directory: $(pwd)"
+              - echo "Verifying project structure..."
+              - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
+              - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
+              - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+              - echo "Checking package files..."
+              - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+              - echo "Checking MuPDF libraries..."
+              - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+              - echo "Verifying Go module path..."
+              - go list -m || echo "Failed to list module"
+              - echo "Checking package can be listed..."
+              - go list ./pkg/mupdf || echo "Failed to list package"
 
               # Run tests with race detection
               - echo "Running tests with race detection..."

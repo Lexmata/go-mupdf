@@ -394,7 +394,9 @@ The project includes a comprehensive test suite with **81.8% coverage** across *
 
 Code coverage is tracked and reported via [Codecov](https://codecov.io/gh/lexmata/go-mupdf). Coverage reports are automatically generated during CI/CD pipeline runs and uploaded to Codecov for tracking coverage trends over time.
 
-### Running Tests
+### Local Testing
+
+Run tests on your local machine:
 
 ```bash
 # Run all tests
@@ -409,7 +411,45 @@ go test ./pkg/mupdf/ -cover
 # Generate detailed coverage report
 go test ./pkg/mupdf/ -coverprofile=coverage.out
 go tool cover -html=coverage.out -o coverage.html
+
+# Run tests with race detection
+go test ./pkg/mupdf/ -race
+
+# Run specific tests
+go test ./pkg/mupdf/ -run TestName
+
+# Run tests in short mode (skips long-running tests)
+go test ./pkg/mupdf/ -short
 ```
+
+### Docker Testing (CI/CD Simulation)
+
+Test in an environment that matches the CI/CD pipeline exactly:
+
+```bash
+# Build Docker test image
+make docker-build
+
+# Run all tests in Docker
+make docker-test
+
+# Quick test without rebuilding
+make docker-quick
+
+# Generate coverage report
+make docker-coverage
+
+# Debug interactively
+make docker-shell
+```
+
+**Why use Docker testing?**
+- ✅ Matches CI/CD environment exactly
+- ✅ Catches environment-specific issues
+- ✅ Ensures consistent test results
+- ✅ No local environment pollution
+
+See the [Docker Testing Guide](docs/DOCKER_TESTING.md) for detailed usage.
 
 ### Test Categories
 
