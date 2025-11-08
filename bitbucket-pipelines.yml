@@ -24,7 +24,7 @@ definitions:
               echo "Building MuPDF from source..."
               cd third_party/mupdf && make -j$(nproc) libs && cd ../..
             fi
-          - echo "Current directory: $(pwd)"
+          - 'echo "Current directory: $(pwd)"'
           - |
             if [ ! -f "go.mod" ]; then
               echo "ERROR: go.mod not found in current directory"
@@ -32,7 +32,7 @@ definitions:
               ls -la
               exit 1
             fi
-          - echo "Project root verified: $(pwd)"
+          - 'echo "Project root verified: $(pwd)"'
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
           - export GOTOOLCHAIN=auto
@@ -95,7 +95,7 @@ definitions:
         script:
           - apt-get update
           - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev unzip
-          - echo "Initial working directory: $(pwd)"
+          - 'echo "Initial working directory: $(pwd)"'
           - |
             if [ ! -f "go.mod" ]; then
               echo "ERROR: go.mod not found in current directory"
@@ -103,7 +103,7 @@ definitions:
               ls -la
               exit 1
             fi
-          - echo "Project root verified: $(pwd)"
+          - 'echo "Project root verified: $(pwd)"'
           - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
           - |
             if [ ! -d "third_party/mupdf" ]; then
@@ -122,13 +122,13 @@ definitions:
           - export GOARCH=amd64
           - export GOTOOLCHAIN=auto
           - cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          - echo "Final working directory: $(pwd)"
+          - 'echo "Final working directory: $(pwd)"'
           - go mod download
-          - echo "Current directory: $(pwd)"
+          - 'echo "Current directory: $(pwd)"'
           - echo "Verifying project structure..."
-          - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
-          - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
-          - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+          - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+          - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+          - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
           - echo "Checking package files..."
           - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
           - echo "Checking MuPDF libraries..."
@@ -186,11 +186,11 @@ pipelines:
             - export GOARCH=amd64
             - export GOTOOLCHAIN=auto
             - go mod download
-            - echo "Current directory: $(pwd)"
+            - 'echo "Current directory: $(pwd)"'
             - echo "Verifying project structure..."
-            - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
-            - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
-            - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+            - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+            - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+            - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
             - echo "Checking package files..."
             - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
             - echo "Checking MuPDF libraries..."
@@ -247,13 +247,13 @@ pipelines:
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
             - export GOTOOLCHAIN=auto
-            - echo "Building release for tag: $TAG_NAME"
+            - 'echo "Building release for tag: $TAG_NAME"'
             - go mod download
-            - echo "Current directory: $(pwd)"
+            - 'echo "Current directory: $(pwd)"'
             - echo "Verifying project structure..."
-            - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
-            - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
-            - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+            - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+            - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+            - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
             - echo "Checking package files..."
             - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
             - echo "Checking MuPDF libraries..."
@@ -293,7 +293,7 @@ pipelines:
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
             - export GOTOOLCHAIN=auto
-            - echo "Building release artifacts for tag: $TAG_NAME"
+            - 'echo "Building release artifacts for tag: $TAG_NAME"'
             - go mod download
             - mkdir -p releases/{source,binaries,documentation}
             - echo "Building command line tools..."
@@ -348,8 +348,8 @@ pipelines:
             - echo "Generating checksums..."
             - cd releases && find . -type f -name "*.tar.gz" -exec sha256sum {} \; > SHA256SUMS && cd ..
             - echo "=== Release Summary ==="
-            - echo "Tag: $TAG_NAME"
-            - echo "Files created:"
+            - 'echo "Tag: $TAG_NAME"'
+            - 'echo "Files created:"'
             - find releases -type f -ls
             - echo "===================="
           after-script:
@@ -400,11 +400,11 @@ pipelines:
               - export GOARCH=amd64
               - export GOTOOLCHAIN=auto
               - go mod download
-              - echo "Current directory: $(pwd)"
+              - 'echo "Current directory: $(pwd)"'
               - echo "Verifying project structure..."
-              - test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)
-              - test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)
-              - test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)
+              - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+              - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+              - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
               - echo "Checking package files..."
               - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
               - echo "Checking MuPDF libraries..."
