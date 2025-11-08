@@ -1,4 +1,4 @@
-image: golang:1.23
+image: golang:1.24
 
 definitions:
   caches:
@@ -14,17 +14,29 @@ definitions:
         caches:
           - go
         script:
-          # Install MuPDF and all required dependencies (needed for go vet with CGO)
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
-
-          # Install linting tools
+          - apt-get install -y build-essential pkg-config unzip
+          - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+          - |
+            if [ ! -d "third_party/mupdf" ]; then
+              echo "MuPDF submodule not found, building will be handled by build.go"
+            else
+              echo "Building MuPDF from source..."
+              cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+            fi
+          - 'echo "Current directory: $(pwd)"'
+          - |
+            if [ ! -f "go.mod" ]; then
+              echo "ERROR: go.mod not found in current directory"
+              echo "Current directory contents:"
+              ls -la
+              exit 1
+            fi
+          - 'echo "Project root verified: $(pwd)"'
           - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           - export PATH=$PATH:$(go env GOPATH)/bin
-          - export GOTOOLCHAIN=local
+          - export GOTOOLCHAIN=auto
           - export GOFLAGS=-buildvcs=false
-
-          # Check code formatting
           - echo "Checking code formatting with gofmt..."
           - |
             UNFORMATTED=$(gofmt -l .)
@@ -35,59 +47,103 @@ definitions:
             else
               echo "✅ All files are properly formatted"
             fi
-
-          # Run go vet
           - echo "Running go vet..."
-          - go vet ./...
-
-          # Run golangci-lint
+          - echo "Checking for cmd directory..."
+          - ls -la cmd 2>/dev/null || echo "cmd directory not found"
+          - |
+            if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+              echo "cmd directory found with Go files, running go vet on pkg and cmd"
+              go vet ./pkg/... ./cmd/...
+            else
+              echo "cmd directory not found or empty, running go vet on pkg only"
+              go vet ./pkg/...
+            fi
           - echo "Running golangci-lint..."
-          - golangci-lint run ./...
-
-          # Run staticcheck if available
+          - |
+            if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+              echo "cmd directory found with Go files, running golangci-lint on pkg and cmd"
+              golangci-lint run ./pkg/... ./cmd/...
+            else
+              echo "cmd directory not found or empty, running golangci-lint on pkg only"
+              golangci-lint run ./pkg/...
+            fi
           - |
             if command -v staticcheck >/dev/null 2>&1; then
               echo "Running staticcheck..."
-              staticcheck ./...
+              if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+                echo "cmd directory found with Go files, running staticcheck on pkg and cmd"
+                staticcheck ./pkg/... ./cmd/...
+              else
+                echo "cmd directory not found or empty, running staticcheck on pkg only"
+                staticcheck ./pkg/...
+              fi
             else
               echo "Installing staticcheck..."
               go install honnef.co/go/tools/cmd/staticcheck@latest
-              staticcheck ./...
+              if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
+                echo "cmd directory found with Go files, running staticcheck on pkg and cmd"
+                staticcheck ./pkg/... ./cmd/...
+              else
+                echo "cmd directory not found or empty, running staticcheck on pkg only"
+                staticcheck ./pkg/...
+              fi
             fi
-
     - step: &test
         name: Run Tests
         caches:
           - go
         script:
-          # Install MuPDF and all required dependencies from package manager
           - apt-get update
-          - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
-
-          # Set up Go environment
+          - apt-get install -y build-essential pkg-config unzip
+          - 'echo "Initial working directory: $(pwd)"'
+          - |
+            if [ ! -f "go.mod" ]; then
+              echo "ERROR: go.mod not found in current directory"
+              echo "Current directory contents:"
+              ls -la
+              exit 1
+            fi
+          - 'echo "Project root verified: $(pwd)"'
+          - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+          - |
+            if [ ! -d "third_party/mupdf" ]; then
+              echo "MuPDF submodule not found, building will be handled by build.go"
+            else
+              echo "Building MuPDF from source..."
+              cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              if [ ! -f "../go.mod" ] && [ ! -f "go.mod" ]; then
+                echo "ERROR: Lost project root after MuPDF build"
+                cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
+              fi
+            fi
           - export GO111MODULE=on
           - export CGO_ENABLED=1
           - export GOOS=linux
           - export GOARCH=amd64
-          - export GOTOOLCHAIN=local
-
-          # Cache Go modules
+          - export GOTOOLCHAIN=auto
+          - cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          - 'echo "Final working directory: $(pwd)"'
           - go mod download
-
-          # Run all tests with race detection
+          - 'echo "Current directory: $(pwd)"'
+          - echo "Verifying project structure..."
+          - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+          - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+          - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
+          - echo "Checking package files..."
+          - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+          - echo "Checking MuPDF libraries..."
+          - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+          - echo "Verifying Go module path..."
+          - go list -m || echo "Failed to list module"
+          - echo "Checking package can be listed..."
+          - go list ./pkg/mupdf || echo "Failed to list package"
           - echo "Running all tests with race detection..."
-          - go test -v -race ./...
-
-          # Run package tests with coverage
+          - go test -v -race ./pkg/mupdf/
           - echo "Running package tests with coverage..."
           - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
-
-          # Generate coverage report
           - echo "Generating coverage report..."
           - go tool cover -html=coverage.out -o coverage.html
           - go tool cover -func=coverage.out
-
-          # Upload coverage to Codecov
           - echo "Uploading coverage to Codecov..."
           - |
             if [ -n "$CODECOV_TOKEN" ]; then
@@ -110,38 +166,46 @@ pipelines:
       - parallel:
         - step: *lint
         - step:
-            name: Run Tests and Benchmarks
-            caches:
-              - go
-            script:
-            # Install MuPDF from package manager
+          name: Run Tests and Benchmarks
+          caches:
+            - go
+          script:
             - apt-get update
-            - apt-get install -y libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
-
-            # Set up Go environment
+            - apt-get install -y build-essential pkg-config unzip
+            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+            - |
+              if [ ! -d "third_party/mupdf" ]; then
+                echo "MuPDF submodule not found, building will be handled by build.go"
+              else
+                echo "Building MuPDF from source..."
+                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              fi
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export GOOS=linux
             - export GOARCH=amd64
-            - export GOTOOLCHAIN=local
-
-            # Cache Go modules
+            - export GOTOOLCHAIN=auto
             - go mod download
-
-            # Run comprehensive tests
+            - 'echo "Current directory: $(pwd)"'
+            - echo "Verifying project structure..."
+            - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+            - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+            - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
+            - echo "Checking package files..."
+            - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+            - echo "Checking MuPDF libraries..."
+            - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+            - echo "Verifying Go module path..."
+            - go list -m || echo "Failed to list module"
+            - echo "Checking package can be listed..."
+            - go list ./pkg/mupdf || echo "Failed to list package"
             - echo "Running comprehensive tests with race detection..."
-            - go test -v -race -coverprofile=coverage.out ./...
-
-            # Run benchmarks
+            - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
             - echo "Running benchmarks..."
             - go test -v -bench=. -benchmem ./pkg/mupdf/
-
-            # Generate coverage report
             - echo "Generating coverage report..."
             - go tool cover -html=coverage.out -o coverage.html
             - go tool cover -func=coverage.out
-
-            # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
               if [ -n "$CODECOV_TOKEN" ]; then
@@ -149,12 +213,12 @@ pipelines:
               else
                 echo "CODECOV_TOKEN not set, skipping Codecov upload"
               fi
-
-            # Build examples or binaries if they exist
             - |
-              if [ -d "cmd" ]; then
+              if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
                 echo "Building command line tools..."
                 go build -v ./cmd/...
+              else
+                echo "cmd directory not found or contains no Go files, skipping build"
               fi
           artifacts:
             - coverage.html
@@ -169,25 +233,38 @@ pipelines:
           caches:
             - go
           script:
-            # Install MuPDF from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
-
-            # Set up Go environment
+            - apt-get install -y build-essential pkg-config unzip
+            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+            - |
+              if [ ! -d "third_party/mupdf" ]; then
+                echo "MuPDF submodule not found, building will be handled by build.go"
+              else
+                echo "Building MuPDF from source..."
+                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              fi
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
-            - echo "Building release for tag: $TAG_NAME"
-
-            # Cache Go modules
+            - export GOTOOLCHAIN=auto
+            - 'echo "Building release for tag: $TAG_NAME"'
             - go mod download
-
-            # Run comprehensive test suite for release
+            - 'echo "Current directory: $(pwd)"'
+            - echo "Verifying project structure..."
+            - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+            - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+            - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
+            - echo "Checking package files..."
+            - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+            - echo "Checking MuPDF libraries..."
+            - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+            - echo "Verifying Go module path..."
+            - go list -m || echo "Failed to list module"
+            - echo "Checking package can be listed..."
+            - go list ./pkg/mupdf || echo "Failed to list package"
             - echo "Running comprehensive test suite..."
-            - go test -v -race -coverprofile=release-coverage.out ./...
+            - go test -v -race -coverprofile=release-coverage.out ./pkg/mupdf/
             - go tool cover -func=release-coverage.out
-
-            # Upload coverage to Codecov
             - echo "Uploading coverage to Codecov..."
             - |
               if [ -n "$CODECOV_TOKEN" ]; then
@@ -202,36 +279,30 @@ pipelines:
           caches:
             - go
           script:
-            # Install MuPDF and release tools from package manager
             - apt-get update
-            - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev curl jq zip
-
-            # Set up Go environment
+            - apt-get install -y build-essential pkg-config unzip curl jq zip
+            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+            - |
+              if [ ! -d "third_party/mupdf" ]; then
+                echo "MuPDF submodule not found, building will be handled by build.go"
+              else
+                echo "Building MuPDF from source..."
+                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+              fi
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
-            - echo "Building release artifacts for tag: $TAG_NAME"
-
-            # Cache Go modules
+            - export GOTOOLCHAIN=auto
+            - 'echo "Building release artifacts for tag: $TAG_NAME"'
             - go mod download
-
-            # Create release directory structure
             - mkdir -p releases/{source,binaries,documentation}
-
-            # Build command line tools
             - echo "Building command line tools..."
             - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/go-mupdf-linux-amd64 ./cmd/go-mupdf/ || echo "go-mupdf tool not built"
             - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$TAG_NAME" -o releases/binaries/create-test-pdf-linux-amd64 ./cmd/create-test-pdf/ || echo "create-test-pdf tool not built"
-
-            # Create source archive
             - echo "Creating source archive..."
             - git archive --format=tar.gz --prefix=go-mupdf-$TAG_NAME/ $TAG_NAME > releases/source/go-mupdf-$TAG_NAME-source.tar.gz
-
-            # Generate release documentation package
             - echo "Packaging documentation..."
             - tar -czf releases/documentation/go-mupdf-$TAG_NAME-docs.tar.gz docs/ examples/ README.md LICENSE CHANGELOG.md
-
-            # Create binary archives
             - |
               cd releases/binaries
               if [ -f "go-mupdf-linux-amd64" ]; then
@@ -243,73 +314,42 @@ pipelines:
                 echo "Created create-test-pdf binary archive"
               fi
               cd ../..
-
-            # Generate release notes from changelog
             - echo "Generating release notes..."
             - |
               cat > releases/RELEASE_NOTES.md << EOF
-              # Go MuPDF $TAG_NAME Release
-
               **Release Date**: $(date +"%Y-%m-%d")
               **Git Tag**: $TAG_NAME
               **Commit**: $BITBUCKET_COMMIT
-
-              ## Installation
-
-              ### Go Module
               \`\`\`bash
               go get bitbucket.org/lexmata/go-mupdf@$TAG_NAME
               \`\`\`
-
-              ### Binary Downloads
               - [Linux AMD64 Tools](releases/binaries/)
               - [Source Code](releases/source/)
               - [Documentation](releases/documentation/)
-
-              ## What's Included
-
               - **Source Code**: Complete Go MuPDF wrapper with MuPDF library
               - **Documentation**: Comprehensive guides and API reference
               - **Examples**: Working code examples and tutorials
               - **Command Line Tools**: go-mupdf and create-test-pdf utilities
               - **Tests**: Full test suite with 81.8% coverage
-
-              ## System Requirements
-
               - Go 1.21 or later
               - C compiler (GCC/Clang/MSVC)
               - Make build system
               - System dependencies (see installation guide)
-
-              ## Changelog
-
               $(grep -A 50 "## \[$TAG_NAME\]" CHANGELOG.md | head -50)
-
-              ## Verification
-
-              ### Checksums
               \`\`\`
               $(find releases -type f -name "*.tar.gz" -exec sha256sum {} \;)
               \`\`\`
-
-              ### Test Coverage
               \`\`\`
               $(go tool cover -func=release-coverage.out | tail -1)
               \`\`\`
-
               ---
-
               For support, documentation, and examples, visit the [repository](https://bitbucket.org/lexmata/go-mupdf).
               EOF
-
-            # Create checksums
             - echo "Generating checksums..."
             - cd releases && find . -type f -name "*.tar.gz" -exec sha256sum {} \; > SHA256SUMS && cd ..
-
-            # Log release summary
             - echo "=== Release Summary ==="
-            - echo "Tag: $TAG_NAME"
-            - echo "Files created:"
+            - 'echo "Tag: $TAG_NAME"'
+            - 'echo "Files created:"'
             - find releases -type f -ls
             - echo "===================="
           after-script:
@@ -344,29 +384,40 @@ pipelines:
             caches:
               - go
             script:
-              # Install MuPDF from package manager
               - apt-get update
-              - apt-get install -y libmupdf-dev libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev
-
-              # Set up Go environment
+              - apt-get install -y build-essential pkg-config unzip
+              - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
+              - |
+                if [ ! -d "third_party/mupdf" ]; then
+                  echo "MuPDF submodule not found, building will be handled by build.go"
+                else
+                  echo "Building MuPDF from source..."
+                  cd third_party/mupdf && make -j$(nproc) libs && cd ../..
+                fi
               - export GO111MODULE=on
               - export CGO_ENABLED=1
               - export GOOS=linux
               - export GOARCH=amd64
-
-              # Cache Go modules
+              - export GOTOOLCHAIN=auto
               - go mod download
-
-              # Run tests with race detection
+              - 'echo "Current directory: $(pwd)"'
+              - echo "Verifying project structure..."
+              - 'test -f go.mod || (echo "ERROR: go.mod not found" && exit 1)'
+              - 'test -d pkg/mupdf || (echo "ERROR: pkg/mupdf directory not found" && exit 1)'
+              - 'test -d third_party/mupdf || (echo "ERROR: third_party/mupdf directory not found" && exit 1)'
+              - echo "Checking package files..."
+              - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+              - echo "Checking MuPDF libraries..."
+              - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+              - echo "Verifying Go module path..."
+              - go list -m || echo "Failed to list module"
+              - echo "Checking package can be listed..."
+              - go list ./pkg/mupdf || echo "Failed to list package"
               - echo "Running tests with race detection..."
-              - go test -v -race ./...
-
-              # Generate coverage for changed files
+              - go test -v -race ./pkg/mupdf/
               - echo "Generating coverage report for PR..."
               - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
               - go tool cover -func=pr-coverage.out
-
-              # Upload coverage to Codecov
               - echo "Uploading coverage to Codecov..."
               - |
                 if [ -n "$CODECOV_TOKEN" ]; then

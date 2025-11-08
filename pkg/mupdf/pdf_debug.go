@@ -15,8 +15,8 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I/usr/include
-#cgo LDFLAGS: -lmupdf -lmupdf-third -lharfbuzz -lfreetype -ljpeg -lpng -lz -ljbig2dec -lopenjp2 -lgumbo -lmujs -lm
+#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
+#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third  -lm
 
 #include <stdlib.h>
 #include <string.h>
