@@ -94,13 +94,13 @@ definitions:
           # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
 
-          # Run all tests with race detection (skip long-running tests)
+          # Run all tests with race detection
           - echo "Running all tests with race detection..."
-          - go test -v -race -short ./pkg/mupdf/
+          - go test -v -race ./pkg/mupdf/
 
-          # Run package tests with coverage (skip long-running tests)
+          # Run package tests with coverage
           - echo "Running package tests with coverage..."
-          - go test -v -race -short -coverprofile=coverage.out ./pkg/mupdf/
+          - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
 
           # Generate coverage report
           - echo "Generating coverage report..."
@@ -158,9 +158,9 @@ pipelines:
             # Cache Go modules (will automatically download required toolchain if needed)
             - go mod download
 
-            # Run comprehensive tests (skip long-running tests for coverage)
+            # Run comprehensive tests with coverage
             - echo "Running comprehensive tests with race detection..."
-            - go test -v -race -short -coverprofile=coverage.out ./pkg/mupdf/
+            - go test -v -race -coverprofile=coverage.out ./pkg/mupdf/
 
             # Run benchmarks
             - echo "Running benchmarks..."
@@ -223,9 +223,9 @@ pipelines:
             # Cache Go modules
             - go mod download
 
-            # Run comprehensive test suite for release (skip long-running tests)
+            # Run comprehensive test suite for release
             - echo "Running comprehensive test suite..."
-            - go test -v -race -short -coverprofile=release-coverage.out ./pkg/mupdf/
+            - go test -v -race -coverprofile=release-coverage.out ./pkg/mupdf/
             - go tool cover -func=release-coverage.out
 
             # Upload coverage to Codecov
@@ -420,13 +420,13 @@ pipelines:
               # Cache Go modules
               - go mod download
 
-              # Run tests with race detection (skip long-running tests)
+              # Run tests with race detection
               - echo "Running tests with race detection..."
-              - go test -v -race -short ./pkg/mupdf/
+              - go test -v -race ./pkg/mupdf/
 
-              # Generate coverage for changed files (skip long-running tests)
+              # Generate coverage for changed files
               - echo "Generating coverage report for PR..."
-              - go test -v -race -short -coverprofile=pr-coverage.out ./pkg/mupdf/
+              - go test -v -race -coverprofile=pr-coverage.out ./pkg/mupdf/
               - go tool cover -func=pr-coverage.out
 
               # Upload coverage to Codecov
