@@ -94,6 +94,13 @@ definitions:
           # Cache Go modules (will automatically download required toolchain if needed)
           - go mod download
 
+          # Verify working directory and paths
+          - echo "Current directory: $(pwd)"
+          - echo "Checking package path..."
+          - ls -la pkg/mupdf/*.go | head -3 || echo "Package files not found"
+          - echo "Checking third_party/mupdf..."
+          - ls -la third_party/mupdf/build/release/*.a | head -3 || echo "MuPDF libraries not found"
+
           # Run all tests with race detection
           - echo "Running all tests with race detection..."
           - go test -v -race ./pkg/mupdf/
