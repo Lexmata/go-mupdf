@@ -229,11 +229,11 @@ pipelines:
       - parallel:
         - step: *lint
         - step:
-          name: Run Tests for Release
-          caches:
-            - go
-            - mupdf-libs
-          script:
+            name: Run Tests for Release
+            caches:
+              - go
+              - mupdf-libs
+            script:
             - apt-get update
             - apt-get install -y build-essential pkg-config unzip
             - git submodule update --init --recursive || echo "Submodule init failed"
