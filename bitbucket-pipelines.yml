@@ -347,20 +347,23 @@ pipelines:
           after-script:
             # Upload to Bitbucket Downloads (if configured)
             - |
-              if [ ! -z "$BITBUCKET_DOWNLOADS_TOKEN" ]; then
+              TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
+              if [ ! -z "$TOKEN" ]; then
                 echo "Uploading release artifacts to Bitbucket Downloads..."
                 for file in releases/binaries/*.tar.gz releases/source/*.tar.gz releases/documentation/*.tar.gz; do
                   if [ -f "$file" ]; then
                     filename=$(basename "$file")
+                    echo "Uploading $filename..."
                     curl -X POST \
                       "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
-                      -H "Authorization: Bearer $BITBUCKET_DOWNLOADS_TOKEN" \
+                      -H "Authorization: Bearer $TOKEN" \
                       -F "files=@$file" \
-                      || echo "Failed to upload $filename"
+                      && echo "✓ Uploaded $filename successfully" \
+                      || echo "✗ Failed to upload $filename"
                   fi
                 done
               else
-                echo "BITBUCKET_DOWNLOADS_TOKEN not set, skipping upload"
+                echo "No authentication token available, skipping upload"
               fi
 
           artifacts:
@@ -385,20 +388,23 @@ pipelines:
             - echo "===================================="
           after-script:
             - |
-              if [ ! -z "$BITBUCKET_DOWNLOADS_TOKEN" ]; then
+              TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
+              if [ ! -z "$TOKEN" ]; then
                 echo "Uploading distribution packages to Bitbucket Downloads..."
                 for file in dist/*.tar.gz dist/*.sha256; do
                   if [ -f "$file" ]; then
                     filename=$(basename "$file")
+                    echo "Uploading $filename..."
                     curl -X POST \
                       "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
-                      -H "Authorization: Bearer $BITBUCKET_DOWNLOADS_TOKEN" \
+                      -H "Authorization: Bearer $TOKEN" \
                       -F "files=@$file" \
-                      || echo "Failed to upload $filename"
+                      && echo "✓ Uploaded $filename successfully" \
+                      || echo "✗ Failed to upload $filename"
                   fi
                 done
               else
-                echo "BITBUCKET_DOWNLOADS_TOKEN not set, skipping upload"
+                echo "No authentication token available, skipping upload"
               fi
           artifacts:
             - dist/*.tar.gz

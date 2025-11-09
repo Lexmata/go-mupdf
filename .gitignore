@@ -61,3 +61,4 @@ third_party/mupdf/build
 
 # Distribution artifacts
 dist/
+mupdf-artifacts/
