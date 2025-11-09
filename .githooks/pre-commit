@@ -89,11 +89,12 @@ else
             exit 1
         fi
     elif is_develop; then
-        if [ "$SKIP_MERGE_CHECK" = "true" ]; then
+        if [ "$SKIP_MERGE_CHECK" = "true" ] || [ "$SKIP_MERGE_CHECK" = "1" ]; then
             echo -e "${GREEN}✅ Skipping merge validation (tag push)${NC}"
         elif [ "$IS_MERGE" = true ]; then
             # Check if merge is from a git-flow branch (feature/bugfix/hotfix/release)
-            if echo "$MERGE_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
+            # Also allow tags/v*^N patterns which indicate release branch merges back after tagging
+            if echo "$MERGE_BRANCH" | grep -qE "^(feature|bugfix|hotfix|release)/|^tags/v[0-9]+\.[0-9]+\.[0-9]+\^"; then
                 echo -e "${GREEN}✅ Merge from git-flow branch to develop is allowed${NC}"
             else
                 echo -e "${RED}❌ Develop branch can only receive merges from git-flow branches!${NC}"
