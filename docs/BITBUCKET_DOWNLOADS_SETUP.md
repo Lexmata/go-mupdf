@@ -4,19 +4,19 @@ This guide explains how to automate artifact uploads to Bitbucket Downloads.
 
 ## Current Configuration
 
-The pipeline is configured to use **either**:
-1. `BITBUCKET_DOWNLOADS_TOKEN` (if set) - dedicated token for downloads
-2. `BITBUCKET_API_TOKEN` (fallback) - your existing workspace token
+The pipeline requires **TWO repository variables**:
+1. `BITBUCKET_USERNAME` - Your Bitbucket account username/email
+2. `BITBUCKET_DOWNLOADS_TOKEN` - App password with "Repositories: Write" permission
 
-**Status**: ⚠️  `BITBUCKET_API_TOKEN` lacks Downloads API permissions. You MUST create `BITBUCKET_DOWNLOADS_TOKEN`.
-
-**Note**: Workspace-level tokens may not have the required "Repositories: Write" permission for the Downloads API endpoint. A repository-level app password is required.
+**Important**: Both variables must be set for uploads to work. Bitbucket requires Basic Authentication with a username and app password for the Downloads API.
 
 ## How It Works
 
-The pipeline uses this token priority:
+The pipeline uses Basic Authentication:
 ```bash
+USERNAME="${BITBUCKET_USERNAME}"
 TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
+curl -u "$USERNAME:$TOKEN" ...
 ```
 
 This means:
@@ -56,50 +56,80 @@ To test if uploads are working:
    curl -LO https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.2.4-linux-amd64.tar.gz
    ```
 
-## Optional: Create Dedicated Downloads Token
+## Required Setup
 
-If you prefer to use a separate token specifically for downloads:
+Both variables must be configured for automated uploads to work.
 
-### Step 1: Create App Password
+### Step 1: Get Your Bitbucket Username
+
+Your Bitbucket username is usually your email address. To confirm:
+
+1. Go to: https://bitbucket.org/account/settings/
+2. Look for **"Bitbucket username"** or **"Email"**
+3. Note this value (e.g., `jquinn@advita.us`)
+
+### Step 2: Create App Password
 
 1. Go to: https://bitbucket.org/account/settings/app-passwords/
 2. Click **"Create app password"**
 3. **Label**: "Pipeline Downloads Upload"
-4. **Permissions**: Select **"Repositories: Write"**
+4. **Permissions**: Select **"Repositories: Write"** ✅
 5. Click **"Create"**
 6. **⚠️ Copy the password immediately** (it won't be shown again)
 
-### Step 2: Add to Repository Variables
+### Step 3: Add Both Variables to Repository
 
-**Option A: Via Bitbucket UI**
+**Via Bitbucket UI:**
+
 1. Go to: https://bitbucket.org/lexmata/go-mupdf/admin/addon/admin/pipelines/repository-variables
-2. Click **"Add variable"**
-3. **Name**: `BITBUCKET_DOWNLOADS_TOKEN`
-4. **Value**: [paste the app password]
-5. ✅ Check **"Secured"** (hides from logs)
-6. Click **"Add"**
 
-**Option B: Via API** (automated)
+2. **Add first variable:**
+   - Click **"Add variable"**
+   - **Name**: `BITBUCKET_USERNAME`
+   - **Value**: [your username from Step 1, e.g., `jquinn@advita.us`]
+   - ✅ Check **"Secured"** (optional but recommended)
+   - Click **"Add"**
+
+3. **Add second variable:**
+   - Click **"Add variable"**
+   - **Name**: `BITBUCKET_DOWNLOADS_TOKEN`
+   - **Value**: [paste the app password from Step 2]
+   - ✅ Check **"Secured"** (required)
+   - Click **"Add"**
+
+**Via API (automated):**
+
 ```bash
 # Set these variables
-BITBUCKET_USERNAME="your-username"
-BITBUCKET_APP_PASSWORD="your-app-password"  # The one you just created
+BB_USERNAME="jquinn@advita.us"  # Your Bitbucket username
+BB_APP_PASSWORD="ATBBxyz..."    # The app password you just created
 REPO_OWNER="lexmata"
 REPO_SLUG="go-mupdf"
 
-# Create the repository variable
+# Add BITBUCKET_USERNAME variable
 curl -X POST \
   "https://api.bitbucket.org/2.0/repositories/${REPO_OWNER}/${REPO_SLUG}/pipelines_config/variables/" \
-  -u "${BITBUCKET_USERNAME}:${BITBUCKET_APP_PASSWORD}" \
+  -u "${BB_USERNAME}:${BB_APP_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "BITBUCKET_USERNAME",
+    "value": "'${BB_USERNAME}'",
+    "secured": false
+  }'
+
+# Add BITBUCKET_DOWNLOADS_TOKEN variable
+curl -X POST \
+  "https://api.bitbucket.org/2.0/repositories/${REPO_OWNER}/${REPO_SLUG}/pipelines_config/variables/" \
+  -u "${BB_USERNAME}:${BB_APP_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
     "key": "BITBUCKET_DOWNLOADS_TOKEN",
-    "value": "'${BITBUCKET_APP_PASSWORD}'",
+    "value": "'${BB_APP_PASSWORD}'",
     "secured": true
   }'
 ```
 
-### Step 3: Verify
+### Step 4: Verify
 
 Push a new tag or re-run a tag pipeline:
 ```bash
@@ -115,16 +145,44 @@ Uploading distribution packages to Bitbucket Downloads...
 
 ## Troubleshooting
 
-### Upload Fails with "Failed to upload"
+### Upload Fails with "BITBUCKET_USERNAME not set"
 
-**Check token permissions:**
+**Problem**: The USERNAME variable is missing.
+
+**Solution**: Add `BITBUCKET_USERNAME` as shown in Step 3 above.
+
+### Upload Fails with "Authentication Issue"
+
+**Problem**: Either username or token is incorrect.
+
+**Test your credentials:**
 ```bash
-# Test your token
-curl -u "username:token" \
+# Replace with your actual values
+USERNAME="jquinn@advita.us"
+TOKEN="ATBBxyz..."
+
+# Test basic auth
+curl -u "$USERNAME:$TOKEN" \
   "https://api.bitbucket.org/2.0/repositories/lexmata/go-mupdf"
+
+# Should return repository info (HTTP 200)
+# If you get 401, the username or token is wrong
 ```
 
-If you get a 403, the token needs "Repositories: Write" permission.
+**Test file upload:**
+```bash
+# Create test file
+echo "test" > test-upload.txt
+
+# Try uploading
+curl -X POST \
+  "https://api.bitbucket.org/2.0/repositories/lexmata/go-mupdf/downloads" \
+  -u "$USERNAME:$TOKEN" \
+  -F "files=@test-upload.txt"
+
+# Should return HTTP 201 with JSON response
+# If you get 401, token lacks "Repositories: Write" permission
+```
 
 ### Upload Succeeds but Files Don't Appear
 
@@ -179,10 +237,11 @@ This makes `go get` installations much faster (seconds vs minutes).
 
 ## Next Steps
 
-1. ✅ Changes committed - pipeline now uses existing token
-2. Push any tag to test: `git tag v1.2.5 && git push origin v1.2.5`
-3. Verify files appear at: https://bitbucket.org/lexmata/go-mupdf/downloads/
-4. (Optional) Create dedicated token for better security isolation
+1. ✅ Changes committed - pipeline now uses Basic Auth
+2. **Add both repository variables** as shown in "Required Setup" above
+3. Push any tag to test: `git tag v1.2.6 && git push origin v1.2.6`
+4. Verify files appear at: https://bitbucket.org/lexmata/go-mupdf/downloads/
+5. Check pipeline logs for "✓ Uploaded ... successfully" messages
 
 ## Related Documentation
 
