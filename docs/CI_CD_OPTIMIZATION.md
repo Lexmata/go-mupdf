@@ -448,7 +448,7 @@ If migrating from a non-optimized pipeline:
    ```yaml
    # Old:
    - cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-   
+
    # New:
    - ./scripts/install-prebuilt-libs.sh
    ```
