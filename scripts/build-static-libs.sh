@@ -38,7 +38,7 @@ log_error() {
 detect_platform() {
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     local arch=$(uname -m)
-    
+
     case "$os" in
         linux*)
             os="linux"
@@ -54,7 +54,7 @@ detect_platform() {
             exit 1
             ;;
     esac
-    
+
     case "$arch" in
         x86_64|amd64)
             arch="amd64"
@@ -70,37 +70,37 @@ detect_platform() {
             exit 1
             ;;
     esac
-    
+
     echo "${os}-${arch}"
 }
 
 # Build MuPDF static libraries
 build_mupdf() {
     log_info "Building MuPDF static libraries..."
-    
+
     if [ ! -d "$MUPDF_DIR" ]; then
         log_error "MuPDF directory not found: $MUPDF_DIR"
         log_error "Please ensure git submodules are initialized: git submodule update --init --recursive"
         exit 1
     fi
-    
+
     cd "$MUPDF_DIR"
-    
+
     # Clean previous build
     log_info "Cleaning previous build..."
     make clean || true
-    
+
     # Build MuPDF with all dependencies statically linked
     log_info "Compiling MuPDF (this may take several minutes)..."
     local nproc_count=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-    
+
     make -j"$nproc_count" \
         USE_SYSTEM_LIBS=no \
         HAVE_X11=no \
         HAVE_GLUT=no \
         build=$BUILD_TYPE \
         libs
-    
+
     log_success "MuPDF built successfully"
 }
 
@@ -108,27 +108,27 @@ build_mupdf() {
 create_distribution() {
     local platform="$1"
     local version="${VERSION:-dev}"
-    
+
     log_info "Creating distribution package for $platform..."
-    
+
     local dist_name="go-mupdf-${version}-${platform}"
     local dist_path="$DIST_DIR/$dist_name"
-    
+
     # Clean and create distribution directory
     rm -rf "$dist_path"
     mkdir -p "$dist_path/lib"
     mkdir -p "$dist_path/include"
     mkdir -p "$dist_path/docs"
-    
+
     # Copy static libraries
     log_info "Copying static libraries..."
     cp "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" "$dist_path/lib/"
     cp "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a" "$dist_path/lib/"
-    
+
     # Copy headers
     log_info "Copying header files..."
     cp -r "$MUPDF_DIR/include/mupdf" "$dist_path/include/"
-    
+
     # Create README for distribution
     cat > "$dist_path/README.md" << 'EOF'
 # go-mupdf Static Libraries
@@ -225,34 +225,34 @@ For issues with MuPDF itself:
 - Website: https://mupdf.com/
 - Documentation: https://mupdf.readthedocs.io/
 EOF
-    
+
     # Copy version and license information
     if [ -f "$PROJECT_ROOT/VERSION" ]; then
         cp "$PROJECT_ROOT/VERSION" "$dist_path/"
     fi
-    
+
     if [ -f "$PROJECT_ROOT/LICENSE" ]; then
         cp "$PROJECT_ROOT/LICENSE" "$dist_path/docs/"
     fi
-    
+
     if [ -f "$MUPDF_DIR/COPYING" ]; then
         cp "$MUPDF_DIR/COPYING" "$dist_path/docs/LICENSE.MuPDF"
     fi
-    
+
     # Create tarball
     log_info "Creating tarball..."
     cd "$DIST_DIR"
     tar -czf "${dist_name}.tar.gz" "$dist_name"
-    
+
     # Create checksum
     log_info "Generating checksums..."
     sha256sum "${dist_name}.tar.gz" > "${dist_name}.tar.gz.sha256"
-    
+
     # Cleanup temporary directory
     rm -rf "$dist_path"
-    
+
     log_success "Distribution package created: $DIST_DIR/${dist_name}.tar.gz"
-    
+
     # Print package info
     local size=$(du -h "$DIST_DIR/${dist_name}.tar.gz" | cut -f1)
     log_info "Package size: $size"
@@ -262,26 +262,26 @@ EOF
 # Verify libraries
 verify_libraries() {
     local platform="$1"
-    
+
     log_info "Verifying built libraries..."
-    
+
     if [ ! -f "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" ]; then
         log_error "libmupdf.a not found!"
         exit 1
     fi
-    
+
     if [ ! -f "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a" ]; then
         log_error "libmupdf-third.a not found!"
         exit 1
     fi
-    
+
     # Check library sizes
     local mupdf_size=$(du -h "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" | cut -f1)
     local third_size=$(du -h "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a" | cut -f1)
-    
+
     log_info "libmupdf.a size: $mupdf_size"
     log_info "libmupdf-third.a size: $third_size"
-    
+
     # List symbols (basic verification)
     log_info "Checking for key symbols..."
     if command -v nm >/dev/null 2>&1; then
@@ -291,7 +291,7 @@ verify_libraries() {
             log_warn "Could not verify MuPDF symbols (this may be normal on some platforms)"
         fi
     fi
-    
+
     log_success "Library verification completed"
 }
 
@@ -299,7 +299,7 @@ verify_libraries() {
 main() {
     log_info "go-mupdf Static Library Builder"
     log_info "================================"
-    
+
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -347,12 +347,12 @@ EOF
         esac
         shift
     done
-    
+
     # Detect platform
     PLATFORM=$(detect_platform)
     log_info "Detected platform: $PLATFORM"
     log_info "Build type: $BUILD_TYPE"
-    
+
     # Build MuPDF
     if [ -z "$SKIP_BUILD" ]; then
         build_mupdf
@@ -360,7 +360,7 @@ EOF
     else
         log_warn "Skipping build (--skip-build specified)"
     fi
-    
+
     # Create distribution
     if [ -z "$BUILD_ONLY" ]; then
         # Get version from VERSION file if not set
@@ -368,9 +368,9 @@ EOF
             VERSION=$(cat "$PROJECT_ROOT/VERSION")
             log_info "Using version from VERSION file: $VERSION"
         fi
-        
+
         create_distribution "$PLATFORM"
-        
+
         log_success "Build completed successfully!"
         log_info "Distribution package: $DIST_DIR/go-mupdf-${VERSION:-dev}-${PLATFORM}.tar.gz"
     else

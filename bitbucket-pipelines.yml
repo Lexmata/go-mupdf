@@ -3,27 +3,41 @@ image: golang:1.24
 definitions:
   caches:
     go: /go/pkg/mod
+    mupdf-libs:
+      key:
+        files:
+          - third_party/mupdf/.git/HEAD
+      path: mupdf-artifacts
 
   services:
     docker:
       memory: 2048
 
   steps:
+    - step: &build-mupdf
+        name: Build MuPDF Libraries
+        caches:
+          - mupdf-libs
+        script:
+          - apt-get update
+          - apt-get install -y build-essential pkg-config
+          - git submodule update --init --recursive
+          - echo "Building MuPDF libraries artifact..."
+          - ./scripts/build-mupdf-artifact.sh
+          - echo "MuPDF artifact created successfully"
+        artifacts:
+          - mupdf-artifacts/**
     - step: &lint
         name: Lint Code
         caches:
           - go
+          - mupdf-libs
         script:
           - apt-get update
           - apt-get install -y build-essential pkg-config unzip
-          - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
-          - |
-            if [ ! -d "third_party/mupdf" ]; then
-              echo "MuPDF submodule not found, building will be handled by build.go"
-            else
-              echo "Building MuPDF from source..."
-              cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-            fi
+          - git submodule update --init --recursive || echo "Submodule init failed"
+          - echo "Installing pre-built MuPDF libraries..."
+          - ./scripts/install-prebuilt-libs.sh
           - 'echo "Current directory: $(pwd)"'
           - |
             if [ ! -f "go.mod" ]; then
@@ -92,6 +106,7 @@ definitions:
         name: Run Tests
         caches:
           - go
+          - mupdf-libs
         script:
           - apt-get update
           - apt-get install -y build-essential pkg-config unzip
@@ -104,18 +119,9 @@ definitions:
               exit 1
             fi
           - 'echo "Project root verified: $(pwd)"'
-          - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
-          - |
-            if [ ! -d "third_party/mupdf" ]; then
-              echo "MuPDF submodule not found, building will be handled by build.go"
-            else
-              echo "Building MuPDF from source..."
-              cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-              if [ ! -f "../go.mod" ] && [ ! -f "go.mod" ]; then
-                echo "ERROR: Lost project root after MuPDF build"
-                cd $(git rev-parse --show-toplevel 2>/dev/null || pwd)
-              fi
-            fi
+          - git submodule update --init --recursive || echo "Submodule init failed"
+          - echo "Installing pre-built MuPDF libraries..."
+          - ./scripts/install-prebuilt-libs.sh
           - export GO111MODULE=on
           - export CGO_ENABLED=1
           - export GOOS=linux
@@ -157,29 +163,27 @@ definitions:
 
 pipelines:
   default:
+    - step: *build-mupdf
     - parallel:
       - step: *lint
       - step: *test
 
   branches:
     main:
+      - step: *build-mupdf
       - parallel:
         - step: *lint
         - step:
           name: Run Tests and Benchmarks
           caches:
             - go
+            - mupdf-libs
           script:
             - apt-get update
             - apt-get install -y build-essential pkg-config unzip
-            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
-            - |
-              if [ ! -d "third_party/mupdf" ]; then
-                echo "MuPDF submodule not found, building will be handled by build.go"
-              else
-                echo "Building MuPDF from source..."
-                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-              fi
+            - git submodule update --init --recursive || echo "Submodule init failed"
+            - echo "Installing pre-built MuPDF libraries..."
+            - ./scripts/install-prebuilt-libs.sh
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export GOOS=linux
@@ -226,23 +230,20 @@ pipelines:
 
   tags:
     v*:
+      - step: *build-mupdf
       - parallel:
         - step: *lint
         - step:
           name: Run Tests for Release
           caches:
             - go
+            - mupdf-libs
           script:
             - apt-get update
             - apt-get install -y build-essential pkg-config unzip
-            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
-            - |
-              if [ ! -d "third_party/mupdf" ]; then
-                echo "MuPDF submodule not found, building will be handled by build.go"
-              else
-                echo "Building MuPDF from source..."
-                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-              fi
+            - git submodule update --init --recursive || echo "Submodule init failed"
+            - echo "Installing pre-built MuPDF libraries..."
+            - ./scripts/install-prebuilt-libs.sh
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
@@ -278,17 +279,13 @@ pipelines:
           name: Build Release Artifacts
           caches:
             - go
+            - mupdf-libs
           script:
             - apt-get update
             - apt-get install -y build-essential pkg-config unzip curl jq zip
-            - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
-            - |
-              if [ ! -d "third_party/mupdf" ]; then
-                echo "MuPDF submodule not found, building will be handled by build.go"
-              else
-                echo "Building MuPDF from source..."
-                cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-              fi
+            - git submodule update --init --recursive || echo "Submodule init failed"
+            - echo "Installing pre-built MuPDF libraries..."
+            - ./scripts/install-prebuilt-libs.sh
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export TAG_NAME=$BITBUCKET_TAG
@@ -378,6 +375,7 @@ pipelines:
           name: Build Static Library Distribution
           caches:
             - go
+            - mupdf-libs
           script:
             - apt-get update
             - apt-get install -y build-essential pkg-config
@@ -413,23 +411,20 @@ pipelines:
 
   pull-requests:
     '**':
+      - step: *build-mupdf
       - parallel:
         - step: *lint
         - step:
             name: Run Tests for PR
             caches:
               - go
+              - mupdf-libs
             script:
               - apt-get update
               - apt-get install -y build-essential pkg-config unzip
-              - git submodule update --init --recursive || echo "Submodule init failed, trying direct clone"
-              - |
-                if [ ! -d "third_party/mupdf" ]; then
-                  echo "MuPDF submodule not found, building will be handled by build.go"
-                else
-                  echo "Building MuPDF from source..."
-                  cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-                fi
+              - git submodule update --init --recursive || echo "Submodule init failed"
+              - echo "Installing pre-built MuPDF libraries..."
+              - ./scripts/install-prebuilt-libs.sh
               - export GO111MODULE=on
               - export CGO_ENABLED=1
               - export GOOS=linux

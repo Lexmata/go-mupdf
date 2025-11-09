@@ -423,7 +423,7 @@ Build for multiple architectures on same platform:
 # For Intel
 arch -x86_64 make dist
 
-# For Apple Silicon  
+# For Apple Silicon
 arch -arm64 make dist
 ```
 
