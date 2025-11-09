@@ -1,11 +1,14 @@
 # Makefile for Go MuPDF Wrapper
 # Provides convenient build targets
 
-.PHONY: help build test clean mupdf-build docker-build docker-test docker-quick docker-coverage docker-shell docker-clean
+.PHONY: help setup build test clean mupdf-build docker-build docker-test docker-quick docker-coverage docker-shell docker-clean dist dist-clean
 
 # Default: build with source-built MuPDF
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Setup:"
+	@echo "  make setup           - Setup MuPDF libraries (download or build)"
 	@echo ""
 	@echo "Local Development:"
 	@echo "  make build           - Build with source-built MuPDF"
@@ -20,6 +23,15 @@ help:
 	@echo "  make docker-coverage - Generate coverage report in Docker"
 	@echo "  make docker-shell    - Open shell in Docker container"
 	@echo "  make docker-clean    - Remove Docker test image"
+	@echo ""
+	@echo "Distribution:"
+	@echo "  make dist            - Build static libraries and create distribution package"
+	@echo "  make dist-clean      - Clean distribution artifacts"
+
+# Setup MuPDF libraries (download pre-built or build from source)
+setup:
+	@echo "Setting up MuPDF libraries..."
+	@./scripts/setup-mupdf.sh
 
 # Build MuPDF from source
 mupdf-build:
@@ -31,13 +43,13 @@ mupdf-build:
 	cd third_party/mupdf && make -j$$(nproc) libs
 
 # Build with source-built MuPDF
-build: mupdf-build
-	@echo "Building Go wrapper with source-built MuPDF..."
+build: setup
+	@echo "Building Go wrapper..."
 	go build ./pkg/mupdf/
 
 # Test with source-built MuPDF
-test: mupdf-build
-	@echo "Running tests with source-built MuPDF..."
+test: setup
+	@echo "Running tests..."
 	go test ./pkg/mupdf/ -v
 
 # Clean build artifacts
@@ -67,4 +79,13 @@ docker-shell:
 
 docker-clean:
 	@./scripts/docker-test.sh clean
+
+# Distribution targets
+dist:
+	@echo "Building static library distribution package..."
+	@./scripts/build-static-libs.sh
+
+dist-clean:
+	@echo "Cleaning distribution artifacts..."
+	@./scripts/build-static-libs.sh --clean
 
