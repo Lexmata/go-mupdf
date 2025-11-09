@@ -350,18 +350,39 @@ pipelines:
               TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
               if [ ! -z "$TOKEN" ]; then
                 echo "Uploading release artifacts to Bitbucket Downloads..."
+                UPLOAD_SUCCESS=true
                 for file in releases/binaries/*.tar.gz releases/source/*.tar.gz releases/documentation/*.tar.gz; do
                   if [ -f "$file" ]; then
                     filename=$(basename "$file")
                     echo "Uploading $filename..."
-                    curl -X POST \
+                    RESPONSE=$(curl -s -X POST \
                       "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
                       -H "Authorization: Bearer $TOKEN" \
                       -F "files=@$file" \
-                      && echo "✓ Uploaded $filename successfully" \
-                      || echo "✗ Failed to upload $filename"
+                      -w "\n%{http_code}")
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | sed '$d')
+                    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+                      echo "✓ Uploaded $filename successfully (HTTP $HTTP_CODE)"
+                    else
+                      echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
+                      echo "Response: $BODY"
+                      UPLOAD_SUCCESS=false
+                    fi
                   fi
                 done
+                if [ "$UPLOAD_SUCCESS" = "false" ]; then
+                  echo ""
+                  echo "⚠️  UPLOAD FAILED - Token Permission Issue"
+                  echo "The BITBUCKET_API_TOKEN does not have permission for the Downloads API."
+                  echo ""
+                  echo "Solution: Create BITBUCKET_DOWNLOADS_TOKEN with 'Repositories: Write' permission"
+                  echo "1. Go to: https://bitbucket.org/account/settings/app-passwords/"
+                  echo "2. Create app password with 'Repositories: Write' permission"
+                  echo "3. Add as BITBUCKET_DOWNLOADS_TOKEN in repository variables"
+                  echo ""
+                  echo "Files are available as pipeline artifacts in the meantime."
+                fi
               else
                 echo "No authentication token available, skipping upload"
               fi
@@ -391,18 +412,39 @@ pipelines:
               TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
               if [ ! -z "$TOKEN" ]; then
                 echo "Uploading distribution packages to Bitbucket Downloads..."
+                UPLOAD_SUCCESS=true
                 for file in dist/*.tar.gz dist/*.sha256; do
                   if [ -f "$file" ]; then
                     filename=$(basename "$file")
                     echo "Uploading $filename..."
-                    curl -X POST \
+                    RESPONSE=$(curl -s -X POST \
                       "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
                       -H "Authorization: Bearer $TOKEN" \
                       -F "files=@$file" \
-                      && echo "✓ Uploaded $filename successfully" \
-                      || echo "✗ Failed to upload $filename"
+                      -w "\n%{http_code}")
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | sed '$d')
+                    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+                      echo "✓ Uploaded $filename successfully (HTTP $HTTP_CODE)"
+                    else
+                      echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
+                      echo "Response: $BODY"
+                      UPLOAD_SUCCESS=false
+                    fi
                   fi
                 done
+                if [ "$UPLOAD_SUCCESS" = "false" ]; then
+                  echo ""
+                  echo "⚠️  UPLOAD FAILED - Token Permission Issue"
+                  echo "The BITBUCKET_API_TOKEN does not have permission for the Downloads API."
+                  echo ""
+                  echo "Solution: Create BITBUCKET_DOWNLOADS_TOKEN with 'Repositories: Write' permission"
+                  echo "1. Go to: https://bitbucket.org/account/settings/app-passwords/"
+                  echo "2. Create app password with 'Repositories: Write' permission"
+                  echo "3. Add as BITBUCKET_DOWNLOADS_TOKEN in repository variables"
+                  echo ""
+                  echo "Files are available as pipeline artifacts in the meantime."
+                fi
               else
                 echo "No authentication token available, skipping upload"
               fi

@@ -8,7 +8,9 @@ The pipeline is configured to use **either**:
 1. `BITBUCKET_DOWNLOADS_TOKEN` (if set) - dedicated token for downloads
 2. `BITBUCKET_API_TOKEN` (fallback) - your existing workspace token
 
-**Status**: ✅ The pipeline will now use your existing `BITBUCKET_API_TOKEN` automatically!
+**Status**: ⚠️  `BITBUCKET_API_TOKEN` lacks Downloads API permissions. You MUST create `BITBUCKET_DOWNLOADS_TOKEN`.
+
+**Note**: Workspace-level tokens may not have the required "Repositories: Write" permission for the Downloads API endpoint. A repository-level app password is required.
 
 ## How It Works
 
