@@ -58,7 +58,34 @@ go build ./your-project
 
 **Note**: This project requires CGO and system dependencies. See [System Dependencies](#system-dependencies) below.
 
-#### Option 2: Clone with Submodules
+#### Option 2: Using Pre-built Static Libraries (Fast!)
+
+Skip compilation and use pre-built MuPDF libraries:
+
+```bash
+# Download pre-built libraries for your platform
+wget https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.1.0-linux-amd64.tar.gz
+
+# Extract to project directory
+tar -xzf go-mupdf-1.1.0-linux-amd64.tar.gz
+
+# Install to expected location (in your go-mupdf project)
+mkdir -p third_party/mupdf/build/release third_party/mupdf/include
+cp go-mupdf-1.1.0-linux-amd64/lib/*.a third_party/mupdf/build/release/
+cp -r go-mupdf-1.1.0-linux-amd64/include/mupdf third_party/mupdf/include/
+
+# Build your application (no compilation needed!)
+go build
+```
+
+**Benefits**:
+- ⚡ **10x faster** - No MuPDF compilation (saves 5-10 minutes)
+- 📦 **No build dependencies** - Just Go and a C compiler
+- 🔒 **Verified builds** - Pre-tested on CI/CD infrastructure
+
+See [Static Library Distribution Guide](docs/STATIC_LIBRARY_DISTRIBUTION.md) for details.
+
+#### Option 3: Clone with Submodules
 
 For development or if you prefer manual control:
 
@@ -701,6 +728,32 @@ go test ./pkg/mupdf/ -v
 2. **Review the API documentation** in the code comments
 3. **Run the example programs** in `examples_test.go`
 4. **Check MuPDF documentation** at https://mupdf.com/docs/
+
+## Distribution
+
+### Creating Distribution Packages
+
+Build static library distribution packages for easy deployment:
+
+```bash
+# Build distribution package for current platform
+make dist
+
+# Output: dist/go-mupdf-<version>-<platform>.tar.gz
+```
+
+The distribution package includes:
+- Pre-compiled MuPDF static libraries
+- All necessary header files
+- Usage documentation
+- SHA256 checksums for verification
+
+**Use Cases**:
+- **CI/CD Optimization**: Cache pre-built libraries to speed up builds
+- **Easy Deployment**: Distribute to users without requiring MuPDF compilation
+- **Releases**: Attach to GitHub/Bitbucket releases for easy download
+
+For detailed information about building, hosting, and using distribution packages, see the [Static Library Distribution Guide](docs/STATIC_LIBRARY_DISTRIBUTION.md).
 
 ## Contributing
 

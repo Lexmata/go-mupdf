@@ -374,6 +374,42 @@ pipelines:
           artifacts:
             - releases/**
             - release-coverage.out
+      - step:
+          name: Build Static Library Distribution
+          caches:
+            - go
+          script:
+            - apt-get update
+            - apt-get install -y build-essential pkg-config
+            - git submodule update --init --recursive
+            - export TAG_NAME=$BITBUCKET_TAG
+            - export VERSION=${TAG_NAME#v}
+            - 'echo "Building static library distribution for version: $VERSION"'
+            - ./scripts/build-static-libs.sh
+            - echo "=== Distribution Package Created ==="
+            - ls -lh dist/
+            - cat dist/*.sha256
+            - echo "===================================="
+          after-script:
+            - |
+              if [ ! -z "$BITBUCKET_DOWNLOADS_TOKEN" ]; then
+                echo "Uploading distribution packages to Bitbucket Downloads..."
+                for file in dist/*.tar.gz dist/*.sha256; do
+                  if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    curl -X POST \
+                      "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
+                      -H "Authorization: Bearer $BITBUCKET_DOWNLOADS_TOKEN" \
+                      -F "files=@$file" \
+                      || echo "Failed to upload $filename"
+                  fi
+                done
+              else
+                echo "BITBUCKET_DOWNLOADS_TOKEN not set, skipping upload"
+              fi
+          artifacts:
+            - dist/*.tar.gz
+            - dist/*.sha256
 
   pull-requests:
     '**':
