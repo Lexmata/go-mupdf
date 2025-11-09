@@ -170,10 +170,10 @@ pipelines:
       - parallel:
         - step: *lint
         - step:
-          name: Run Tests and Benchmarks
-          caches:
-            - go
-          script:
+            name: Run Tests and Benchmarks
+            caches:
+              - go
+            script:
             - apt-get update
             - apt-get install -y build-essential pkg-config unzip curl wget
             - git submodule update --init --recursive || echo "Submodule init failed"
