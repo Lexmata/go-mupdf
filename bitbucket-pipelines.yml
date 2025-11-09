@@ -31,13 +31,12 @@ definitions:
         name: Lint Code
         caches:
           - go
-          - mupdf-libs
         script:
           - apt-get update
-          - apt-get install -y build-essential pkg-config unzip
+          - apt-get install -y build-essential pkg-config unzip curl wget
           - git submodule update --init --recursive || echo "Submodule init failed"
-          - echo "Installing pre-built MuPDF libraries..."
-          - ./scripts/install-prebuilt-libs.sh
+          - echo "Setting up MuPDF libraries..."
+          - ./scripts/setup-mupdf.sh
           - 'echo "Current directory: $(pwd)"'
           - |
             if [ ! -f "go.mod" ]; then
@@ -106,10 +105,9 @@ definitions:
         name: Run Tests
         caches:
           - go
-          - mupdf-libs
         script:
           - apt-get update
-          - apt-get install -y build-essential pkg-config unzip
+          - apt-get install -y build-essential pkg-config unzip curl wget
           - 'echo "Initial working directory: $(pwd)"'
           - |
             if [ ! -f "go.mod" ]; then
@@ -120,8 +118,8 @@ definitions:
             fi
           - 'echo "Project root verified: $(pwd)"'
           - git submodule update --init --recursive || echo "Submodule init failed"
-          - echo "Installing pre-built MuPDF libraries..."
-          - ./scripts/install-prebuilt-libs.sh
+          - echo "Setting up MuPDF libraries..."
+          - ./scripts/setup-mupdf.sh
           - export GO111MODULE=on
           - export CGO_ENABLED=1
           - export GOOS=linux
@@ -163,27 +161,24 @@ definitions:
 
 pipelines:
   default:
-    - step: *build-mupdf
     - parallel:
       - step: *lint
       - step: *test
 
   branches:
     main:
-      - step: *build-mupdf
       - parallel:
         - step: *lint
         - step:
           name: Run Tests and Benchmarks
           caches:
             - go
-            - mupdf-libs
           script:
             - apt-get update
-            - apt-get install -y build-essential pkg-config unzip
+            - apt-get install -y build-essential pkg-config unzip curl wget
             - git submodule update --init --recursive || echo "Submodule init failed"
-            - echo "Installing pre-built MuPDF libraries..."
-            - ./scripts/install-prebuilt-libs.sh
+            - echo "Setting up MuPDF libraries..."
+            - ./scripts/setup-mupdf.sh
             - export GO111MODULE=on
             - export CGO_ENABLED=1
             - export GOOS=linux
@@ -411,20 +406,18 @@ pipelines:
 
   pull-requests:
     '**':
-      - step: *build-mupdf
       - parallel:
         - step: *lint
         - step:
             name: Run Tests for PR
             caches:
               - go
-              - mupdf-libs
             script:
               - apt-get update
-              - apt-get install -y build-essential pkg-config unzip
+              - apt-get install -y build-essential pkg-config unzip curl wget
               - git submodule update --init --recursive || echo "Submodule init failed"
-              - echo "Installing pre-built MuPDF libraries..."
-              - ./scripts/install-prebuilt-libs.sh
+              - echo "Setting up MuPDF libraries..."
+              - ./scripts/setup-mupdf.sh
               - export GO111MODULE=on
               - export CGO_ENABLED=1
               - export GOOS=linux
