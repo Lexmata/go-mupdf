@@ -6,7 +6,7 @@ definitions:
     mupdf-libs:
       key:
         files:
-          - third_party/mupdf/.git/HEAD
+          - .gitmodules
       path: mupdf-artifacts
 
   services:

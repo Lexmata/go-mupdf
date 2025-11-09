@@ -66,25 +66,26 @@ else
         if [ "$SKIP_MERGE_CHECK" = "true" ]; then
             echo -e "${GREEN}✅ Skipping merge validation (tag push)${NC}"
         elif [ "$IS_MERGE" = true ]; then
-            # Check if merge is from develop or a release branch
-            if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop|^release/|^remotes/origin/release/)"; then
+            # Check if merge is from develop, release branch, or hotfix branch
+            if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop|^release/|^remotes/origin/release/|^hotfix/|^remotes/origin/hotfix/)"; then
                 echo -e "${GREEN}✅ Merge from ${MERGE_BRANCH} to main is allowed${NC}"
             else
-                echo -e "${RED}❌ Main branch can only receive merges from develop or release branches!${NC}"
+                echo -e "${RED}❌ Main branch can only receive merges from develop, release, or hotfix branches!${NC}"
                 echo "   Current merge is from: $MERGE_BRANCH"
-                echo "   Only merges from 'develop' or 'release/*' branches are allowed to main"
+                echo "   Only merges from 'develop', 'release/*', or 'hotfix/*' branches are allowed to main"
                 exit 1
             fi
         else
             # Block direct commits to main
             echo -e "${RED}❌ Direct commits to main branch are not allowed!${NC}"
             echo ""
-            echo "   Main branch should only receive merges from develop."
+            echo "   Main branch should only receive merges from develop, release, or hotfix branches."
             echo "   Workflow:"
             echo "     1. Create a feature/bugfix branch from develop"
             echo "     2. Make commits on that branch"
             echo "     3. Merge to develop"
             echo "     4. Merge develop to main (for releases)"
+            echo "     5. For critical fixes: hotfix/* merges to main, then back to develop"
             echo ""
             exit 1
         fi
