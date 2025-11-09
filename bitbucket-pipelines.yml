@@ -20,7 +20,7 @@ definitions:
           - mupdf-libs
         script:
           - apt-get update
-          - apt-get install -y build-essential pkg-config
+          - apt-get install -y build-essential pkg-config unzip
           - git submodule update --init --recursive
           - echo "Building MuPDF libraries artifact..."
           - ./scripts/build-mupdf-artifact.sh
@@ -373,7 +373,7 @@ pipelines:
             - mupdf-libs
           script:
             - apt-get update
-            - apt-get install -y build-essential pkg-config
+            - apt-get install -y build-essential pkg-config unzip
             - git submodule update --init --recursive
             - export TAG_NAME=$BITBUCKET_TAG
             - export VERSION=${TAG_NAME#v}
