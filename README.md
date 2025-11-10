@@ -99,28 +99,30 @@ go build
 
 See [Static Library Distribution Guide](docs/STATIC_LIBRARY_DISTRIBUTION.md) for details.
 
-#### Option 3: Using in Your Own Project
+#### Option 3: Using in Your Own Project (Simplest!)
 
-When using go-mupdf as a dependency:
+When using go-mupdf as a dependency, it now automatically downloads and builds MuPDF:
 
 ```bash
 # In your project directory
 go get bitbucket.org/lexmata/go-mupdf@latest
 
-# Navigate to the go-mupdf module directory
-cd $(go list -m -f '{{.Dir}}' bitbucket.org/lexmata/go-mupdf)
-
-# Setup MuPDF libraries
-./scripts/setup-mupdf.sh
-
-# Return to your project and build
-cd -
+# That's it! MuPDF will be automatically downloaded and built during first compilation
 go build
 ```
 
-**Why this step?**: CGO libraries require compiled C libraries. The setup script downloads pre-built libraries (fast!) or builds from source (slower) as needed.
+**How it works**: The package automatically:
+1. Downloads MuPDF 1.26.11 tarball from GitHub releases
+2. Extracts to `third_party/mupdf`
+3. Builds the static libraries with correct flags
+4. All happens automatically during `go build`!
 
-**Alternative**: Use pre-built libraries from Option 2 and copy to the expected location.
+**Requirements**:
+- Make (build tool)
+- GCC or Clang (C compiler)
+- Internet connection (for first-time MuPDF download)
+
+**No git required!** - Downloads directly from GitHub releases as a tarball.
 
 #### Option 4: Manual Build with Submodules
 
