@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.7] - 2025-11-10
+
 ### 🐛 Fixed
 - **Critical**: Fixed `libmupdf-third.a` not being built correctly in `build.go` for downstream consumers
   - The automatic build process now explicitly calls `make libs` with required flags
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Documents the critical importance of `libmupdf-third.a`
   - Provides troubleshooting guide for common build issues
   - Details build flags and their purposes
+- **Added**: `.cursor/rules/no-unsolicited-markdown.mdc` - Cursor rule preventing automatic markdown file generation
 
 ## [1.2.0] - 2024-11-09
 
