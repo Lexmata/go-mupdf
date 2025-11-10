@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2025-11-10
+
 ### 🐛 Fixed
 - **Critical**: Fixed `go get` workflow to use `go generate` for MuPDF setup
   - Converted `setup.go` from init-based to standalone script
