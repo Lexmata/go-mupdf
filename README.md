@@ -99,30 +99,36 @@ go build
 
 See [Static Library Distribution Guide](docs/STATIC_LIBRARY_DISTRIBUTION.md) for details.
 
-#### Option 3: Using in Your Own Project (Simplest!)
+#### Option 3: Using in Your Own Project
 
-When using go-mupdf as a dependency, it now automatically downloads and builds MuPDF:
+When using go-mupdf as a dependency, you need to set up MuPDF before building:
 
 ```bash
 # In your project directory
 go get bitbucket.org/lexmata/go-mupdf@latest
 
-# That's it! MuPDF will be automatically downloaded and built during first compilation
+# Run the setup script to clone and build MuPDF
+cd $(go list -m -f '{{.Dir}}' bitbucket.org/lexmata/go-mupdf)
+go generate ./pkg/mupdf
+
+# Return to your project and build
+cd -
 go build
 ```
 
-**How it works**: The package automatically:
-1. Downloads MuPDF 1.26.11 tarball from GitHub releases
-2. Extracts to `third_party/mupdf`
-3. Builds the static libraries with correct flags
-4. All happens automatically during `go build`!
+**How it works**: The `go generate` command:
+1. Clones MuPDF 1.26.11 repository with `--recurse-submodules`
+2. Extracts to `third_party/mupdf` in the module directory
+3. Builds the static libraries with `USE_SYSTEM_LIBS=no` to use bundled dependencies
+4. Takes 5-10 minutes on first run
 
 **Requirements**:
-- Make (build tool)
-- GCC or Clang (C compiler)
-- Internet connection (for first-time MuPDF download)
+- **Git** (for cloning submodules)
+- **Make** (build tool)
+- **GCC or Clang** (C compiler)
+- Internet connection (for first-time MuPDF clone)
 
-**No git required!** - Downloads directly from GitHub releases as a tarball.
+**Why submodules?** MuPDF uses custom versions of dependencies (like lcms2 multi-threaded fork) that are incompatible with most system libraries, so we must build with bundled submodules.
 
 #### Option 4: Manual Build with Submodules
 

@@ -7,20 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+- **Critical**: Fixed `go get` workflow to use `go generate` for MuPDF setup
+  - Converted `setup.go` from init-based to standalone script
+  - CGO linking happens at compile-time, before init() runs
+  - Users must now run `go generate ./pkg/mupdf` before building
+  - Creates `generate.go` with `//go:generate go run setup.go` directive
+
+### 📝 Changed
+- `setup.go` is now a standalone script with `//go:build ignore`
+- Added `generate.go` with go:generate directive for automatic setup
+- Documentation updated with clear `go get` workflow using `go generate`
+
+### ⚠️ Breaking Changes
+- `go get` users must run `go generate` before building (see README)
+- Workflow: `go get` → navigate to module dir → `go generate ./pkg/mupdf` → build
+
 ## [1.3.1] - 2025-11-10
 
 ### 🐛 Fixed
-- **Critical**: Fixed `go get` installation to properly clone MuPDF with submodules
+- Attempted to fix `go get` installation with init-based approach
   - MuPDF uses custom versions of dependencies (e.g., lcms2 multi-threaded fork)
   - These are incompatible with system libraries, requiring bundled submodules
-  - `setup.go` now clones MuPDF repository with `--recurse-submodules` to user's working directory
-  - Creates `./third_party/mupdf` in the user's project (not in read-only module cache)
+  - `setup.go` clones MuPDF repository with `--recurse-submodules`
   - Builds with `USE_SYSTEM_LIBS=no` to ensure bundled dependencies are used
 
 ### 📝 Changed
 - Reverted from tarball approach back to git clone with submodules
-- Git is now required for `go get` installations (for submodule support)
-- Automatic setup creates `third_party/mupdf` in current working directory
+- Git is now required for installations (for submodule support)
+
+### ⚠️ Note
+- v1.3.1 init() approach doesn't work due to CGO compile-time requirements - use v1.3.2+
 
 ### ⚠️ Requirements
 - **git** is now required for installation (to clone submodules)

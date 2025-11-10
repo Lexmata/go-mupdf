@@ -1,7 +1,10 @@
-//go:build !nobuild
-// +build !nobuild
+//go:build ignore
+// +build ignore
 
-package mupdf
+// This file provides setup functionality for MuPDF libraries.
+// It can be run manually with: go run setup.go
+
+package main
 
 import (
 	"fmt"
@@ -9,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sync"
 )
 
 const (
@@ -19,24 +21,14 @@ const (
 	mupdfRepoURL = "https://git.ghostscript.com/mupdf.git"
 )
 
-var (
-	setupOnce sync.Once
-	setupErr  error
-)
-
-// init runs before CGO compilation and ensures MuPDF libraries are available
-func init() {
-	setupOnce.Do(func() {
-		setupErr = ensureMuPDFLibraries()
-	})
-
-	if setupErr != nil {
+func main() {
+	if err := ensureMuPDFLibraries(); err != nil {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
 		fmt.Fprintf(os.Stderr, "  ERROR: MuPDF Setup Failed\n")
 		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Error: %v\n", setupErr)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "MuPDF requires git and a C compiler to build.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -50,20 +42,21 @@ func init() {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		// Don't exit - let CGO linker provide the final error
+		os.Exit(1)
 	}
 }
 
 // ensureMuPDFLibraries checks for libraries and clones/builds if needed
 func ensureMuPDFLibraries() error {
-	// Get the current working directory (where user is building)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+	// Get the package directory (two levels up from this file)
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		return fmt.Errorf("failed to get current file path")
 	}
 
-	// Use current working directory for third_party
-	mupdfDir := filepath.Join(cwd, "third_party", "mupdf")
+	pkgDir := filepath.Dir(filename)
+	projectRoot := filepath.Join(pkgDir, "..", "..")
+	mupdfDir := filepath.Join(projectRoot, "third_party", "mupdf")
 	libsDir := filepath.Join(mupdfDir, "build", "release")
 
 	// Check if libraries already exist
@@ -72,11 +65,11 @@ func ensureMuPDFLibraries() error {
 
 	if fileExists(libMupdf) && fileExists(libMupdfThird) {
 		// Libraries exist, we're good
+		fmt.Println("✅ MuPDF libraries already exist")
 		return nil
 	}
 
 	fmt.Println("🔧 MuPDF libraries not found, setting up...")
-	fmt.Println("   This will create ./third_party/mupdf in your project directory")
 
 	// Check if git is available
 	if !commandExists("git") {
@@ -86,7 +79,7 @@ func ensureMuPDFLibraries() error {
 	// Check if MuPDF source exists
 	if !fileExists(filepath.Join(mupdfDir, "Makefile")) {
 		fmt.Printf("📦 Cloning MuPDF %s with submodules (this may take a few minutes)...\n", mupdfVersion)
-		if err := cloneMuPDFWithSubmodules(cwd, mupdfDir); err != nil {
+		if err := cloneMuPDFWithSubmodules(projectRoot, mupdfDir); err != nil {
 			return fmt.Errorf("failed to clone MuPDF: %w", err)
 		}
 	} else {
