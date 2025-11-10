@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+- **Critical**: Fixed `libmupdf-third.a` not being built correctly in `build.go` for downstream consumers
+  - The automatic build process now explicitly calls `make libs` with required flags
+  - Added verification to ensure both `libmupdf.a` and `libmupdf-third.a` are created
+  - Fixes "cannot find -lmupdf-third" linker errors when using `go get`
+  - Build now uses: `USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs`
+  - Added comprehensive error messages to help users troubleshoot build issues
+
+### 📚 Documentation
+- **Added**: `docs/BUILD_SYSTEM.md` - Comprehensive build system documentation
+  - Explains how the build process works for different use cases
+  - Documents the critical importance of `libmupdf-third.a`
+  - Provides troubleshooting guide for common build issues
+  - Details build flags and their purposes
+
 ## [1.2.0] - 2024-11-09
 
 ### ✨ Added

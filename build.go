@@ -221,21 +221,99 @@ func main() {
 
 build:
 
-	// Build MuPDF
-	cmd := exec.Command("make")
+	// Check if libraries already exist
+	libMupdf := filepath.Join(mupdfDir, "build", "release", "libmupdf.a")
+	libMupdfThird := filepath.Join(mupdfDir, "build", "release", "libmupdf-third.a")
+
+	if _, err := os.Stat(libMupdf); err == nil {
+		if _, err := os.Stat(libMupdfThird); err == nil {
+			fmt.Println("✅ MuPDF libraries already built")
+			fmt.Printf("  - libmupdf.a: %s\n", libMupdf)
+			fmt.Printf("  - libmupdf-third.a: %s\n", libMupdfThird)
+			return
+		}
+	}
+
+	// Build MuPDF with correct flags and target
+	// We explicitly build the 'libs' target with flags to ensure both
+	// libmupdf.a and libmupdf-third.a are built correctly
+	fmt.Println("Building MuPDF libraries (this may take 5-10 minutes)...")
+
+	// Set number of CPU cores for parallel build
+	numCPU := runtime.NumCPU()
+
+	// Build command with proper flags
+	// These flags ensure:
+	// - USE_SYSTEM_LIBS=no: All dependencies are statically linked into libmupdf-third.a
+	// - HAVE_X11=no: No X11 GUI dependencies (not needed for library usage)
+	// - HAVE_GLUT=no: No GLUT GUI dependencies (not needed for library usage)
+	// - build=release: Build optimized release version
+	// - libs: Build library targets (libmupdf.a and libmupdf-third.a)
+	cmd := exec.Command("make",
+		fmt.Sprintf("-j%d", numCPU),
+		"USE_SYSTEM_LIBS=no",
+		"HAVE_X11=no",
+		"HAVE_GLUT=no",
+		"build=release",
+		"libs",
+	)
 	cmd.Dir = mupdfDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Set number of CPU cores for parallel build
-	numCPU := runtime.NumCPU()
-	cmd.Args = append(cmd.Args, fmt.Sprintf("-j%d", numCPU))
-
-	fmt.Printf("Running build command: %s\n", cmd.String())
+	fmt.Printf("Running: make -j%d USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs\n", numCPU)
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to build MuPDF: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
+		fmt.Fprintf(os.Stderr, "  ERROR: Failed to build MuPDF\n")
+		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "This may happen if:\n")
+		fmt.Fprintf(os.Stderr, "  - Build tools are not installed (make, gcc/clang)\n")
+		fmt.Fprintf(os.Stderr, "  - Required build dependencies are missing\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "On Ubuntu/Debian, install with:\n")
+		fmt.Fprintf(os.Stderr, "  sudo apt-get install build-essential pkg-config\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "On macOS, install with:\n")
+		fmt.Fprintf(os.Stderr, "  xcode-select --install\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "For more information, see: docs/INSTALLATION.md\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
+		fmt.Fprintf(os.Stderr, "\n")
 		os.Exit(1)
 	}
 
-	fmt.Println("MuPDF built successfully!")
+	// Verify both libraries were built
+	if _, err := os.Stat(libMupdf); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error: libmupdf.a was not created by the build\n")
+		os.Exit(1)
+	}
+	if _, err := os.Stat(libMupdfThird); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
+		fmt.Fprintf(os.Stderr, "  ERROR: libmupdf-third.a was not created\n")
+		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "The MuPDF build completed but did not create libmupdf-third.a.\n")
+		fmt.Fprintf(os.Stderr, "This library contains all third-party dependencies and is required\n")
+		fmt.Fprintf(os.Stderr, "for linking.\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Expected location: %s\n", libMupdfThird)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "This may indicate a problem with the MuPDF build system.\n")
+		fmt.Fprintf(os.Stderr, "Please report this issue at:\n")
+		fmt.Fprintf(os.Stderr, "  https://bitbucket.org/lexmata/go-mupdf/issues\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		os.Exit(1)
+	}
+
+	fmt.Println("✅ MuPDF libraries built successfully!")
+	fmt.Printf("  - libmupdf.a: %s\n", libMupdf)
+	fmt.Printf("  - libmupdf-third.a: %s\n", libMupdfThird)
 }
