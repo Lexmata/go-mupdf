@@ -1,0 +1,68 @@
+---
+title: No Unsolicited Markdown Files
+description: Do not generate markdown files unless explicitly requested by the user
+tags: [documentation, markdown, files]
+---
+
+# No Unsolicited Markdown Files
+
+## Rule
+
+**Do NOT create markdown files (*.md) unless the user explicitly requests them.**
+
+## When NOT to Create Markdown Files
+
+- ❌ Do not create README files after completing tasks
+- ❌ Do not create documentation summaries automatically
+- ❌ Do not create task summaries or progress reports
+- ❌ Do not create changelog entries in separate files (update existing CHANGELOG.md only)
+- ❌ Do not create "how-to" guides unprompted
+- ❌ Do not create markdown files "for reference"
+
+## When TO Create Markdown Files
+
+Only create markdown files when:
+
+- ✅ User explicitly says "create a markdown file"
+- ✅ User explicitly says "create documentation"
+- ✅ User explicitly says "create a README"
+- ✅ User explicitly says "document this in a markdown file"
+- ✅ Updating EXISTING markdown files that are already part of the project
+
+## Examples
+
+### ❌ BAD - Don't Do This
+
+```
+User: "Fix the authentication bug"
+Assistant: *fixes bug and creates BUGFIX_SUMMARY.md*
+```
+
+```
+User: "Add a new feature"
+Assistant: *implements feature and creates FEATURE_DOCUMENTATION.md*
+```
+
+### ✅ GOOD - Do This Instead
+
+```
+User: "Fix the authentication bug"
+Assistant: *fixes bug, updates CHANGELOG.md if it exists, but doesn't create new markdown files*
+```
+
+```
+User: "Add a new feature and document it"
+Assistant: "I've added the feature. Would you like me to create documentation for it in a markdown file, or would you prefer to update existing documentation?"
+```
+
+## Rationale
+
+- Users prefer to control when documentation is created
+- Unsolicited documentation files can clutter the repository
+- Users can always request documentation later if needed
+- Existing markdown files (like CHANGELOG.md, README.md) should still be updated as appropriate
+
+## Exceptions
+
+- Updating EXISTING markdown files is allowed and expected (e.g., CHANGELOG.md, README.md, docs/*.md)
+- Creating markdown files when explicitly part of a defined task (e.g., "Create a new doc in docs/ explaining X")
