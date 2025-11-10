@@ -41,6 +41,119 @@ check_existing_libs() {
     return 1
 }
 
+# Detect platform
+detect_platform() {
+    local os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    local arch=$(uname -m)
+    
+    case "$os" in
+        linux*) os="linux" ;;
+        darwin*) os="darwin" ;;
+        mingw*|msys*|cygwin*) os="windows" ;;
+        *) os="unknown" ;;
+    esac
+    
+    case "$arch" in
+        x86_64|amd64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        armv7l) arch="arm" ;;
+        *) arch="unknown" ;;
+    esac
+    
+    echo "${os}-${arch}"
+}
+
+# Get version
+get_version() {
+    # Try VERSION file
+    if [ -f "$PROJECT_ROOT/VERSION" ]; then
+        cat "$PROJECT_ROOT/VERSION"
+        return
+    fi
+    
+    # Try git tags
+    if command -v git >/dev/null 2>&1; then
+        local version=$(cd "$PROJECT_ROOT" && git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -n "$version" ]; then
+            echo "$version" | sed 's/^v//'
+            return
+        fi
+    fi
+    
+    echo "latest"
+}
+
+# Download from Bitbucket
+download_from_bitbucket() {
+    local platform="$1"
+    local version="$2"
+    
+    log_info "Attempting to download from Bitbucket Downloads..."
+    log_info "Platform: $platform, Version: $version"
+    
+    local base_url="https://bitbucket.org/lexmata/go-mupdf/downloads"
+    local filename="go-mupdf-${version}-${platform}.tar.gz"
+    local url="${base_url}/${filename}"
+    
+    log_info "URL: $url"
+    
+    local temp_dir=$(mktemp -d)
+    local success=0
+    
+    # Try to download
+    if command -v curl >/dev/null 2>&1; then
+        log_info "Downloading with curl..."
+        if curl -f -L -o "$temp_dir/$filename" "$url" 2>/dev/null; then
+            success=1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        log_info "Downloading with wget..."
+        if wget -q -O "$temp_dir/$filename" "$url" 2>/dev/null; then
+            success=1
+        fi
+    else
+        log_warn "Neither curl nor wget available"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    if [ $success -eq 0 ]; then
+        log_warn "Download failed for $platform v$version"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    log_success "Downloaded successfully"
+    
+    # Extract and install
+    log_info "Extracting..."
+    tar -xzf "$temp_dir/$filename" -C "$temp_dir"
+    
+    local extracted_dir=$(find "$temp_dir" -maxdepth 1 -type d -name "go-mupdf-*" | head -1)
+    
+    if [ -z "$extracted_dir" ]; then
+        log_error "Failed to find extracted directory"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    # Install
+    mkdir -p "$MUPDF_DIR/build/release"
+    mkdir -p "$MUPDF_DIR/include"
+    
+    cp "$extracted_dir/lib/"*.a "$MUPDF_DIR/build/release/"
+    cp -r "$extracted_dir/include/mupdf" "$MUPDF_DIR/include/"
+    
+    rm -rf "$temp_dir"
+    
+    if check_existing_libs; then
+        log_success "Installed from Bitbucket Downloads"
+        return 0
+    fi
+    
+    return 1
+}
+
 # Install from artifact directory
 install_from_artifact() {
     log_info "Installing MuPDF libraries from artifact..."
@@ -217,9 +330,20 @@ main() {
         fi
     fi
 
-    # 3. Fall back to building from source
+    # 3. Try to download from Bitbucket
+    if [ $success -eq 0 ] && [ "$SKIP_DOWNLOAD" != "1" ]; then
+        local platform=$(detect_platform)
+        local version=$(get_version)
+        
+        log_info "No local artifacts found, trying Bitbucket Downloads..."
+        if download_from_bitbucket "$platform" "$version"; then
+            success=1
+        fi
+    fi
+
+    # 4. Fall back to building from source
     if [ $success -eq 0 ]; then
-        log_warn "No pre-built libraries found, falling back to source build"
+        log_warn "No pre-built libraries available, falling back to source build"
         if build_from_source; then
             success=1
         fi
@@ -249,29 +373,34 @@ Usage: $0 [OPTIONS]
 Options:
     --artifact-dir DIR     Directory containing pre-built artifacts (default: mupdf-artifacts)
     --dist-file FILE       Install from a specific distribution tarball
+    --skip-download        Skip downloading from Bitbucket Downloads
     --force-build          Skip artifacts and build from source
     --help                 Show this help message
 
 Environment Variables:
     ARTIFACT_DIR           Directory containing pre-built artifacts
     DIST_FILE             Distribution tarball to install from
+    SKIP_DOWNLOAD         Set to "1" to skip downloading from Bitbucket
 
 Examples:
     $0                                          # Auto-detect and install
     $0 --artifact-dir ./artifacts              # Use specific artifact directory
     $0 --dist-file dist/go-mupdf-1.1.0.tar.gz # Install from distribution
+    $0 --skip-download                         # Don't download, build if needed
     $0 --force-build                           # Force build from source
 
 This script attempts to install MuPDF libraries in the following order:
 1. From artifact directory (ARTIFACT_DIR or --artifact-dir)
 2. From distribution tarball (DIST_FILE or --dist-file)
-3. Build from source as fallback
+3. Download from Bitbucket Downloads (unless --skip-download)
+4. Build from source as fallback
 
 EOF
 }
 
 # Parse arguments
 FORCE_BUILD=0
+SKIP_DOWNLOAD=${SKIP_DOWNLOAD:-0}
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -282,6 +411,10 @@ while [[ $# -gt 0 ]]; do
         --dist-file)
             DIST_FILE="$2"
             shift 2
+            ;;
+        --skip-download)
+            SKIP_DOWNLOAD=1
+            shift
             ;;
         --force-build)
             FORCE_BUILD=1

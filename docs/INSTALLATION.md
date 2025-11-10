@@ -2,47 +2,103 @@
 
 This guide covers different installation methods for the Go MuPDF Wrapper.
 
-## Important: Git Submodules Required
+## Quick Start ⚡
 
-⚠️ **This library requires MuPDF to be built from source, which is provided as a git submodule.**
-
-**The build script (`build.go`) automatically downloads the submodule if missing**, even when installed via `go get`. However, **git must be installed** on your system for this to work.
-
-## Installation Methods
-
-### Method 1: Clone with Submodules (Recommended)
-
-This is the recommended method for all use cases:
-
-```bash
-# Clone with submodules
-git clone --recurse-submodules https://bitbucket.org/lexmata/go-mupdf.git
-cd go-mupdf
-
-# Build MuPDF (happens automatically via build.go)
-go build ./pkg/mupdf/
-
-# Or use the Makefile
-make build
-```
-
-### Method 2: Clone Then Initialize Submodules
-
-If you already cloned without submodules:
+The **easiest and fastest** way to get started:
 
 ```bash
 # Clone the repository
 git clone https://bitbucket.org/lexmata/go-mupdf.git
 cd go-mupdf
 
-# Initialize submodules
-git submodule update --init --recursive
+# Automatic setup (downloads pre-built libraries or builds from source)
+make setup
+
+# Build and test
+make build
+make test
+```
+
+The `make setup` command automatically:
+1. ✅ Downloads pre-built MuPDF libraries from Bitbucket (if available for your platform)
+2. ✅ Falls back to building from source if pre-built unavailable
+3. ✅ Caches libraries for faster subsequent builds
+
+**No manual submodule initialization required!**
+
+## Installation Methods
+
+### Method 1: Automatic Setup (Recommended)
+
+This method automatically downloads pre-built libraries when possible:
+
+```bash
+# Clone the repository
+git clone https://bitbucket.org/lexmata/go-mupdf.git
+cd go-mupdf
+
+# Automatic library setup
+make setup
+
+# Build the Go wrapper
+make build
+```
+
+**What happens during setup:**
+- Detects your platform (linux-amd64, darwin-arm64, etc.)
+- Downloads pre-built MuPDF libraries from Bitbucket Downloads
+- Extracts libraries to `third_party/mupdf/build/release`
+- If pre-built unavailable, automatically builds from source
+
+**Advantages:**
+- ⚡ Fast: Pre-built libraries install in seconds
+- 🎯 Reliable: Known working configuration for your platform
+- 💾 Efficient: Reuses cached builds from CI/CD
+- 🔄 Automatic: Falls back to source build if needed
+
+### Method 2: Clone with Submodules (Traditional)
+
+If you prefer the traditional approach:
+
+```bash
+# Clone with submodules
+git clone --recurse-submodules https://bitbucket.org/lexmata/go-mupdf.git
+cd go-mupdf
+
+# Setup and build
+make setup
+make build
+```
+
+### Method 3: Manual Script Execution
+
+For more control over the setup process:
+
+```bash
+# Clone the repository
+git clone https://bitbucket.org/lexmata/go-mupdf.git
+cd go-mupdf
+
+# Run setup script directly
+./scripts/setup-mupdf.sh
 
 # Build
 go build ./pkg/mupdf/
 ```
 
-### Method 3: Using go get (Automatic Submodule Download)
+**Script options:**
+```bash
+# Download only (don't build from source)
+./scripts/setup-mupdf.sh --download-only
+
+# Build from source only (skip download)
+./scripts/setup-mupdf.sh --build-only
+
+# Force rebuild even if libraries exist
+./scripts/setup-mupdf.sh --force
+```
+
+### Method 4: Using go get (Legacy)
 
 ✅ **The build script automatically downloads the MuPDF submodule when needed.**
 
@@ -100,20 +156,52 @@ The git submodule approach ensures:
 - Smaller repository size
 - Clear dependency management
 
-## Automatic Build Process
+## How Library Setup Works
 
-When you build the package, `build.go` automatically:
+The setup process intelligently handles MuPDF libraries with multiple fallback methods:
 
-1. **Checks for MuPDF source** in `third_party/mupdf`
-2. **Initializes submodules** if in a git repository
-3. **Builds MuPDF** from source using `make`
-4. **Verifies the build** before proceeding
+### Priority Order
 
-This happens automatically when you run:
-```bash
-go build ./pkg/mupdf/
-go test ./pkg/mupdf/
+1. **Check Existing Libraries** ✅
+   - If libraries already exist in `third_party/mupdf/build/release`, skip setup
+
+2. **Download Pre-built from Bitbucket** 🚀
+   - Automatically detects your platform (linux-amd64, darwin-arm64, etc.)
+   - Downloads matching release from Bitbucket Downloads
+   - Extracts and installs in seconds
+   - **Available for:** Linux (amd64, arm64), macOS (amd64, arm64)
+
+3. **Build from Source** 🔨
+   - Falls back if download fails or platform not supported
+   - Initializes git submodule automatically
+   - Compiles MuPDF with optimized settings
+   - Takes 5-10 minutes on first build
+
+### Platform Detection
+
+The scripts automatically detect:
+- **Operating System**: Linux, macOS, Windows
+- **Architecture**: amd64 (x86_64), arm64 (aarch64), arm
+- **Version**: From VERSION file or git tags
+
+Example detected platforms:
+- `linux-amd64` - Linux on Intel/AMD 64-bit
+- `darwin-arm64` - macOS on Apple Silicon
+- `darwin-amd64` - macOS on Intel
+
+### Download URLs
+
+Pre-built libraries are downloaded from:
 ```
+https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-{version}-{platform}.tar.gz
+```
+
+Example:
+```
+https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.2.6-linux-amd64.tar.gz
+```
+
+These are automatically built and uploaded by the CI/CD pipeline on each release.
 
 ## Troubleshooting
 
@@ -155,51 +243,113 @@ sudo apt-get install build-essential gcc g++ make pkg-config \
 
 ## CI/CD Considerations
 
-### Bitbucket Pipelines
+### Bitbucket Pipelines (Optimized)
 
-The pipeline builds MuPDF from source:
+Our CI/CD pipeline is optimized to reuse pre-built libraries:
 
 ```yaml
-script:
-  - apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
-  - git submodule update --init --recursive
-  - cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-  - go test ./pkg/mupdf/
+# Build MuPDF once (only on releases)
+- step:
+    name: Build MuPDF Libraries
+    caches:
+      - mupdf-libs
+    script:
+      - ./scripts/build-mupdf-artifact.sh
+    artifacts:
+      - mupdf-artifacts/**
+
+# Reuse in all test/build steps
+- step:
+    name: Run Tests
+    caches:
+      - mupdf-libs
+    script:
+      - ./scripts/install-prebuilt-libs.sh  # Uses cache or downloads
+      - go test ./pkg/mupdf/
 ```
+
+**Benefits:**
+- ⚡ **90% faster** builds by reusing MuPDF compilation
+- 💾 Caches libraries between pipeline runs
+- 📦 Automatically uploads release artifacts
+
+See `docs/CI_CD_OPTIMIZATION.md` for full details.
 
 ### GitHub Actions
 
-For source-built MuPDF:
+Using pre-built libraries:
 
 ```yaml
 - uses: actions/checkout@v3
-  with:
-    submodules: recursive
 
-- name: Install build dependencies
-  run: |
-    sudo apt-get update
-    sudo apt-get install -y build-essential pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev
+- name: Setup MuPDF Libraries
+  run: ./scripts/setup-mupdf.sh
 
 - name: Build and test
   run: |
-    cd third_party/mupdf && make -j$(nproc) libs && cd ../..
-    go test ./pkg/mupdf/
+    make build
+    make test
 ```
+
+The setup script will automatically download pre-built libraries for the platform.
 
 ### Docker
 
-The Dockerfile automatically handles submodules:
+Optimized Dockerfile using pre-built libraries:
 
 ```dockerfile
-RUN git submodule update --init --recursive
-RUN cd third_party/mupdf && make -j$(nproc) libs
+# Copy setup script
+COPY scripts/setup-mupdf.sh /app/scripts/
+
+# Setup libraries (downloads pre-built if available)
+RUN ./scripts/setup-mupdf.sh
+
+# Build Go wrapper
+RUN go build ./pkg/mupdf/
 ```
 
 ## Best Practices
 
-1. **Always clone with submodules**: Use `--recurse-submodules` flag
-2. **Use Makefile targets**: `make build` handles everything
-3. **Check submodule status**: `git submodule status`
-4. **Update submodules**: `git submodule update --remote` (when needed)
+1. **Use `make setup`** for automatic library installation
+2. **Prefer pre-built libraries** for faster development iteration
+3. **Use Makefile targets**: `make build` and `make test` handle dependencies
+4. **Cache in CI/CD**: Use pipeline cache for MuPDF libraries
+5. **Clean builds**: `make clean` removes cached libraries
+
+## Advanced Configuration
+
+### Force Source Build
+
+To always build from source instead of downloading:
+
+```bash
+# Environment variable
+export SKIP_DOWNLOAD=1
+./scripts/setup-mupdf.sh
+
+# Or use script flag
+./scripts/install-prebuilt-libs.sh --skip-download
+```
+
+### Use Specific Version
+
+```bash
+# Download specific version
+export MUPDF_VERSION=1.2.6
+./scripts/setup-mupdf.sh
+```
+
+### Override Platform Detection
+
+```bash
+# Force specific platform
+export MUPDF_PLATFORM=linux-amd64
+./scripts/setup-mupdf.sh
+```
+
+## Related Documentation
+
+- **CI/CD Optimization**: See `docs/CI_CD_OPTIMIZATION.md`
+- **Bitbucket Downloads Setup**: See `docs/BITBUCKET_DOWNLOADS_SETUP.md`
+- **Pipeline Monitoring**: See `docs/PIPELINE_MONITORING.md`
 
