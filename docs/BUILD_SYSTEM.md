@@ -68,11 +68,11 @@ These flags are critical for proper static linking:
 
 - **`USE_SYSTEM_LIBS=no`**: Ensures all dependencies are statically linked into `libmupdf-third.a`
   - Without this flag, the build may attempt to use system libraries, resulting in an incomplete or missing `libmupdf-third.a`
-  
+
 - **`HAVE_X11=no`**: Disables X11 GUI dependencies (not needed for library usage)
-  
+
 - **`HAVE_GLUT=no`**: Disables GLUT GUI dependencies (not needed for library usage)
-  
+
 - **`build=release`**: Build optimized release version (vs debug)
 
 ### Complete Build Command
@@ -250,11 +250,11 @@ Typical build times:
 - **From Source (First Time)**: 5-10 minutes
   - Highly parallelized with `-j$(nproc)`
   - Depends on CPU cores and speed
-  
+
 - **From Pre-built Libraries**: < 1 minute
   - Download + extraction only
   - No compilation needed
-  
+
 - **Cached (Incremental)**: < 30 seconds
   - Only rebuilds changed files
 
@@ -273,7 +273,7 @@ See [CI/CD Optimization Guide](CI_CD_OPTIMIZATION.md) for details.
 ## References
 
 - **MuPDF Build System**: See `third_party/mupdf/Makefile` and `third_party/mupdf/Makerules`
-- **Build Scripts**: 
+- **Build Scripts**:
   - `build.go` - Automatic build for `go get`
   - `scripts/setup-mupdf.sh` - Setup script for development
   - `scripts/build-static-libs.sh` - Distribution package builder
