@@ -66,8 +66,9 @@ else
         if [ "$SKIP_MERGE_CHECK" = "true" ]; then
             echo -e "${GREEN}✅ Skipping merge validation (tag push)${NC}"
         elif [ "$IS_MERGE" = true ]; then
-            # Check if merge is from develop, release branch, or hotfix branch
-            if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop|^release/|^remotes/origin/release/|^hotfix/|^remotes/origin/hotfix/)"; then
+            # Check if merge is from develop, release branch, hotfix branch, or tagged release
+            # Also allow tags/v*^N patterns which indicate release branch merges after tagging
+            if echo "$MERGE_BRANCH" | grep -qE "(develop|origin/develop|^release/|^remotes/origin/release/|^hotfix/|^remotes/origin/hotfix/|^tags/v[0-9]+\.[0-9]+\.[0-9]+\^)"; then
                 echo -e "${GREEN}✅ Merge from ${MERGE_BRANCH} to main is allowed${NC}"
             else
                 echo -e "${RED}❌ Main branch can only receive merges from develop, release, or hotfix branches!${NC}"
