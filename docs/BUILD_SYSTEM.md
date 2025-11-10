@@ -32,12 +32,20 @@ When users install the package with `go get`:
 go get bitbucket.org/lexmata/go-mupdf
 ```
 
-The `build.go` file in the root directory is automatically executed before the Go package is built. This file:
+The `pkg/mupdf/setup.go` file's `init()` function automatically runs before CGO compilation. This function:
 
-1. Checks if MuPDF submodule exists
-2. Downloads the submodule if missing (even without .git directory)
-3. Builds MuPDF libraries with the correct flags
-4. Verifies both `libmupdf.a` and `libmupdf-third.a` were created
+1. Checks if `libmupdf.a` and `libmupdf-third.a` already exist
+2. If not, downloads MuPDF tarball from GitHub releases (https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.11.tar.gz)
+3. Extracts the tarball to `third_party/mupdf`
+4. Builds MuPDF libraries with the correct flags
+5. Verifies both `libmupdf.a` and `libmupdf-third.a` were created
+
+**Benefits of this approach:**
+- ✅ No git required (only wget/curl or Go's http package)
+- ✅ Smaller download (no git history)
+- ✅ Faster extraction
+- ✅ Specific version pinning
+- ✅ Works reliably with `go get`
 
 ### 3. Pre-built Library Distribution
 
@@ -138,20 +146,27 @@ User runs: go get bitbucket.org/lexmata/go-mupdf
     │
     ├─> Go downloads source code
     │
-    ├─> build.go is automatically executed (because it's package main)
+    ├─> Go attempts to build pkg/mupdf
     │   │
-    │   ├─> Check if third_party/mupdf exists
-    │   │   └─> If not, download submodule via git clone
+    │   ├─> pkg/mupdf/setup.go init() runs before CGO compilation
+    │   │   │
+    │   │   ├─> Check if libraries exist
+    │   │   │   └─> If yes, skip to CGO compilation
+    │   │   │
+    │   │   ├─> Check if third_party/mupdf/Makefile exists
+    │   │   │   └─> If not, download tarball from GitHub
+    │   │   │       ├─> Download: https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.11.tar.gz
+    │   │   │       ├─> Extract to third_party/
+    │   │   │       └─> Rename mupdf-1.26.11 to mupdf
+    │   │   │
+    │   │   └─> Build MuPDF libraries
+    │   │       ├─> Run: make -j<N> USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs
+    │   │       └─> Verify libmupdf.a and libmupdf-third.a exist
     │   │
-    │   ├─> Check if libraries already exist
-    │   │   └─> If yes, skip build
-    │   │
-    │   └─> Build MuPDF libraries
-    │       ├─> Run: make -j<N> USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs
-    │       └─> Verify libmupdf.a and libmupdf-third.a exist
+    │   └─> CGO compiles with libraries
+    │       └─> Links against libmupdf.a and libmupdf-third.a
     │
-    └─> Go builds the mupdf package
-        └─> CGO links against libmupdf.a and libmupdf-third.a
+    └─> Success!
 ```
 
 ### For Development

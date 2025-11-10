@@ -1,5 +1,11 @@
-//go:build !nobuild
-// +build !nobuild
+//go:build nobuild
+// +build nobuild
+
+// DEPRECATED: This file is no longer used for automatic builds.
+// MuPDF setup is now handled by pkg/mupdf/setup.go which downloads
+// the tarball directly from GitHub releases.
+//
+// This file is kept for reference and manual builds only.
 
 package main
 

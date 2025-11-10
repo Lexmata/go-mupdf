@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Improved
+- **Breaking Change**: Replaced git submodule approach with direct tarball download from GitHub releases
+  - MuPDF source is now downloaded as a tarball from GitHub releases (faster, more reliable)
+  - No longer requires git to be installed for `go get` users
+  - Automatic setup now runs in `pkg/mupdf/setup.go` init() function (works with `go get`)
+  - Downloads specific version (1.26.11) directly from https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.11.tar.gz
+  - Smaller download size (no git history)
+  - More reliable for downstream consumers
+  - `build.go` deprecated (kept for reference only)
+
+### 📝 Changed
+- Git submodules no longer required for development (optional)
+- Simpler build process with automatic tarball download and extraction
+- Faster initial setup (tarball vs git clone with history)
+
 ## [1.2.7] - 2025-11-10
 
 ### 🐛 Fixed
