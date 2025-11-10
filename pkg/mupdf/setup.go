@@ -4,24 +4,19 @@
 package mupdf
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 )
 
 const (
-	// MuPDF version to download
+	// MuPDF version to clone
 	mupdfVersion = "1.26.11"
-	// GitHub release tarball URL
-	mupdfTarballURL = "https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/" + mupdfVersion + ".tar.gz"
+	// MuPDF git repository
+	mupdfRepoURL = "https://git.ghostscript.com/mupdf.git"
 )
 
 var (
@@ -38,16 +33,20 @@ func init() {
 	if setupErr != nil {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
-		fmt.Fprintf(os.Stderr, "  WARNING: MuPDF Setup Issue\n")
+		fmt.Fprintf(os.Stderr, "  ERROR: MuPDF Setup Failed\n")
 		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Error: %v\n", setupErr)
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "MuPDF libraries are required for CGO compilation.\n")
+		fmt.Fprintf(os.Stderr, "MuPDF requires git and a C compiler to build.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "To manually set up:\n")
-		fmt.Fprintf(os.Stderr, "  cd $(go list -m -f '{{.Dir}}' bitbucket.org/lexmata/go-mupdf)\n")
-		fmt.Fprintf(os.Stderr, "  ./scripts/setup-mupdf.sh\n")
+		fmt.Fprintf(os.Stderr, "Requirements:\n")
+		fmt.Fprintf(os.Stderr, "  - git (for cloning submodules)\n")
+		fmt.Fprintf(os.Stderr, "  - make, gcc/clang (for building)\n")
+		fmt.Fprintf(os.Stderr, "  - zlib, freetype, harfbuzz headers (or built from submodules)\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Note: MuPDF uses custom versions of dependencies (like lcms2)\n")
+		fmt.Fprintf(os.Stderr, "      that may be incompatible with system libraries.\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "═══════════════════════════════════════════════════════════════\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -55,17 +54,16 @@ func init() {
 	}
 }
 
-// ensureMuPDFLibraries checks for libraries and downloads/builds if needed
+// ensureMuPDFLibraries checks for libraries and clones/builds if needed
 func ensureMuPDFLibraries() error {
-	// Get the package directory
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return fmt.Errorf("failed to get current file path")
+	// Get the current working directory (where user is building)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	pkgDir := filepath.Dir(filename)
-	projectRoot := filepath.Join(pkgDir, "..", "..")
-	mupdfDir := filepath.Join(projectRoot, "third_party", "mupdf")
+	// Use current working directory for third_party
+	mupdfDir := filepath.Join(cwd, "third_party", "mupdf")
 	libsDir := filepath.Join(mupdfDir, "build", "release")
 
 	// Check if libraries already exist
@@ -78,17 +76,30 @@ func ensureMuPDFLibraries() error {
 	}
 
 	fmt.Println("🔧 MuPDF libraries not found, setting up...")
+	fmt.Println("   This will create ./third_party/mupdf in your project directory")
+
+	// Check if git is available
+	if !commandExists("git") {
+		return fmt.Errorf("git is required but not found in PATH")
+	}
 
 	// Check if MuPDF source exists
 	if !fileExists(filepath.Join(mupdfDir, "Makefile")) {
-		fmt.Printf("📦 Downloading MuPDF %s from GitHub...\n", mupdfVersion)
-		if err := downloadAndExtractMuPDF(projectRoot, mupdfDir); err != nil {
-			return fmt.Errorf("failed to download MuPDF: %w", err)
+		fmt.Printf("📦 Cloning MuPDF %s with submodules (this may take a few minutes)...\n", mupdfVersion)
+		if err := cloneMuPDFWithSubmodules(cwd, mupdfDir); err != nil {
+			return fmt.Errorf("failed to clone MuPDF: %w", err)
+		}
+	} else {
+		// Source exists, make sure submodules are initialized
+		fmt.Println("📦 MuPDF source found, ensuring submodules are initialized...")
+		if err := initializeSubmodules(mupdfDir); err != nil {
+			return fmt.Errorf("failed to initialize submodules: %w", err)
 		}
 	}
 
 	// Build MuPDF libraries
-	fmt.Println("🔨 Building MuPDF libraries (this may take 5-10 minutes)...")
+	fmt.Println("🔨 Building MuPDF libraries with bundled dependencies (5-10 minutes)...")
+	fmt.Println("   Using USE_SYSTEM_LIBS=no to avoid incompatible system libraries")
 	if err := buildMuPDFLibraries(mupdfDir); err != nil {
 		return fmt.Errorf("failed to build MuPDF: %w", err)
 	}
@@ -105,145 +116,52 @@ func ensureMuPDFLibraries() error {
 	return nil
 }
 
-// downloadAndExtractMuPDF downloads the tarball and extracts it
-func downloadAndExtractMuPDF(projectRoot, mupdfDir string) error {
-	// Create temp file for download
-	tmpFile, err := os.CreateTemp("", "mupdf-*.tar.gz")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	// Download tarball
-	fmt.Printf("Downloading from: %s\n", mupdfTarballURL)
-	resp, err := http.Get(mupdfTarballURL)
-	if err != nil {
-		return fmt.Errorf("failed to download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
-	}
-
-	// Copy to temp file
-	_, err = io.Copy(tmpFile, resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to save tarball: %w", err)
-	}
-
-	// Rewind temp file
-	if _, err := tmpFile.Seek(0, 0); err != nil {
-		return fmt.Errorf("failed to seek temp file: %w", err)
-	}
-
-	// Extract tarball
-	fmt.Println("📂 Extracting MuPDF source...")
+// cloneMuPDFWithSubmodules clones the MuPDF repository with all submodules
+func cloneMuPDFWithSubmodules(projectRoot, mupdfDir string) error {
 	thirdPartyDir := filepath.Join(projectRoot, "third_party")
 	if err := os.MkdirAll(thirdPartyDir, 0755); err != nil {
 		return fmt.Errorf("failed to create third_party directory: %w", err)
 	}
 
-	if err := extractTarGz(tmpFile, thirdPartyDir); err != nil {
-		return fmt.Errorf("failed to extract tarball: %w", err)
+	// Clone with submodules (shallow clone for speed)
+	fmt.Println("   Cloning repository...")
+	cmd := exec.Command("git", "clone",
+		"--branch", mupdfVersion,
+		"--depth", "1",
+		"--recurse-submodules",
+		"--shallow-submodules",
+		mupdfRepoURL,
+		mupdfDir,
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone failed: %w", err)
 	}
 
-	// GitHub creates a directory like "mupdf-1.26.11", rename it to "mupdf"
-	extractedDir := filepath.Join(thirdPartyDir, "mupdf-"+mupdfVersion)
-	if fileExists(extractedDir) {
-		// Remove old mupdf directory if it exists
-		if fileExists(mupdfDir) {
-			if err := os.RemoveAll(mupdfDir); err != nil {
-				return fmt.Errorf("failed to remove old mupdf directory: %w", err)
-			}
-		}
-		// Rename extracted directory
-		if err := os.Rename(extractedDir, mupdfDir); err != nil {
-			return fmt.Errorf("failed to rename directory: %w", err)
-		}
-	}
-
+	// Verify clone was successful
 	if !fileExists(filepath.Join(mupdfDir, "Makefile")) {
-		return fmt.Errorf("MuPDF source not properly extracted")
+		return fmt.Errorf("MuPDF repository not properly cloned")
 	}
 
+	fmt.Println("   ✅ Repository cloned successfully")
 	return nil
 }
 
-// extractTarGz extracts a .tar.gz file
-func extractTarGz(gzipStream io.Reader, destDir string) error {
-	uncompressedStream, err := gzip.NewReader(gzipStream)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer uncompressedStream.Close()
+// initializeSubmodules ensures submodules are initialized and updated
+func initializeSubmodules(mupdfDir string) error {
+	// Initialize submodules
+	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
+	cmd.Dir = mupdfDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	tarReader := tar.NewReader(uncompressedStream)
-
-	for {
-		header, err := tarReader.Next()
-
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			return fmt.Errorf("failed to read tar: %w", err)
-		}
-
-		target := filepath.Join(destDir, header.Name)
-
-		// Security check: prevent path traversal
-		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal file path in tarball: %s", header.Name)
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return fmt.Errorf("failed to create directory: %w", err)
-			}
-
-		case tar.TypeReg:
-			// Create parent directory
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("failed to create parent directory: %w", err)
-			}
-
-			outFile, err := os.Create(target)
-			if err != nil {
-				return fmt.Errorf("failed to create file: %w", err)
-			}
-
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				return fmt.Errorf("failed to write file: %w", err)
-			}
-
-			outFile.Close()
-
-			// Set file permissions
-			if err := os.Chmod(target, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to set permissions: %w", err)
-			}
-
-		case tar.TypeSymlink:
-			// Create parent directory
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("failed to create parent directory: %w", err)
-			}
-
-			// Create symlink
-			if err := os.Symlink(header.Linkname, target); err != nil {
-				// Ignore symlink errors on Windows
-				if runtime.GOOS != "windows" {
-					return fmt.Errorf("failed to create symlink: %w", err)
-				}
-			}
-		}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git submodule update failed: %w", err)
 	}
 
+	fmt.Println("   ✅ Submodules initialized")
 	return nil
 }
 
@@ -275,5 +193,11 @@ func buildMuPDFLibraries(mupdfDir string) error {
 // fileExists checks if a file or directory exists
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
+	return err == nil
+}
+
+// commandExists checks if a command is available in PATH
+func commandExists(cmd string) bool {
+	_, err := exec.LookPath(cmd)
 	return err == nil
 }

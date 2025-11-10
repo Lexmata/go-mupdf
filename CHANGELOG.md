@@ -7,27 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+- **Critical**: Fixed `go get` installation to properly clone MuPDF with submodules
+  - MuPDF uses custom versions of dependencies (e.g., lcms2 multi-threaded fork)
+  - These are incompatible with system libraries, requiring bundled submodules
+  - `setup.go` now clones MuPDF repository with `--recurse-submodules` to user's working directory
+  - Creates `./third_party/mupdf` in the user's project (not in read-only module cache)
+  - Builds with `USE_SYSTEM_LIBS=no` to ensure bundled dependencies are used
+
+### 📝 Changed
+- Reverted from tarball approach back to git clone with submodules
+- Git is now required for `go get` installations (for submodule support)
+- Automatic setup creates `third_party/mupdf` in current working directory
+
+### ⚠️ Requirements
+- **git** is now required for installation (to clone submodules)
+- **make**, **gcc/clang** required for building
+- System libraries (zlib, freetype, etc.) can be used but MuPDF's bundled versions are preferred
+
 ## [1.3.0] - 2025-11-10
 
 ### 🚀 Improved
-- **Breaking Change**: Replaced git submodule approach with direct tarball download from GitHub releases
-  - MuPDF source is now downloaded as a tarball from GitHub releases (faster, more reliable)
-  - No longer requires git to be installed for `go get` users
-  - Automatic setup now runs in `pkg/mupdf/setup.go` init() function (works with `go get`)
-  - Downloads specific version (1.26.11) directly from https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.11.tar.gz
-  - Smaller download size (no git history)
-  - More reliable for downstream consumers
-  - `build.go` deprecated (kept for reference only)
+- Automatic setup now runs in `pkg/mupdf/setup.go` init() function (works with `go get`)
+- `build.go` deprecated (kept for reference only)
 
-### 📝 Changed
-- Git submodules no longer required for development (optional)
-- Simpler build process with automatic tarball download and extraction
-- Faster initial setup (tarball vs git clone with history)
-
-### ⚠️ Breaking Changes
-- The build process has changed from git submodules to tarball downloads
-- If you have existing builds, clean your `third_party/mupdf` directory and rebuild
-- Git is no longer required for `go get` installations
+### ⚠️ Note
+- v1.3.0 had issues with `go get` due to tarball approach - use v1.3.1 or later
 
 ## [1.2.7] - 2025-11-10
 
