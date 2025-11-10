@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2025-11-10
+
 ### 🐛 Fixed
 - **Critical**: Fixed `go get` installation to properly clone MuPDF with submodules
   - MuPDF uses custom versions of dependencies (e.g., lcms2 multi-threaded fork)
