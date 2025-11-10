@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-11-10
+
 ### 🚀 Improved
 - **Breaking Change**: Replaced git submodule approach with direct tarball download from GitHub releases
   - MuPDF source is now downloaded as a tarball from GitHub releases (faster, more reliable)
@@ -21,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git submodules no longer required for development (optional)
 - Simpler build process with automatic tarball download and extraction
 - Faster initial setup (tarball vs git clone with history)
+
+### ⚠️ Breaking Changes
+- The build process has changed from git submodules to tarball downloads
+- If you have existing builds, clean your `third_party/mupdf` directory and rebuild
+- Git is no longer required for `go get` installations
 
 ## [1.2.7] - 2025-11-10
 
