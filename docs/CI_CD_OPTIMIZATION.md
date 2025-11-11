@@ -493,7 +493,7 @@ For issues or questions:
 
 ---
 
-**Last Updated**: 2024
+**Last Updated**: 2025
 **Pipeline Version**: v2.0 (Optimized)
 **MuPDF Version**: 1.23.x
 

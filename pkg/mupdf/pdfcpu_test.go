@@ -457,7 +457,7 @@ func TestAddWatermark(t *testing.T) {
 	// Test 4: Add watermark with special characters
 	t.Run("AddWatermarkSpecialChars", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "watermarked_special.pdf")
-		watermarkText := "© 2024 Confidential & Proprietary"
+		watermarkText := "© 2025 Confidential & Proprietary"
 
 		err := AddWatermark(pdfPath, outputPath, watermarkText, "", nil)
 		if err != nil {

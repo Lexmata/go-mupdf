@@ -30,7 +30,7 @@ else
     echo "Pre-built libraries not available for your platform."
     echo "Building MuPDF from source (this will take 5-10 minutes)..."
     echo ""
-    
+
     if [ -f "${SCRIPT_DIR}/setup-mupdf.sh" ]; then
         "${SCRIPT_DIR}/setup-mupdf.sh"
         echo ""

@@ -119,7 +119,7 @@ cd ../your-project
 go build
 ```
 
-**How it works**: 
+**How it works**:
 - `make setup` tries to download pre-built MuPDF libraries from CI/CD
 - Libraries are installed to the project's `third_party/mupdf/` directory
 - If pre-built libraries aren't available, it automatically builds from source
@@ -130,7 +130,7 @@ go build
 - ⚠️ **Other platforms** - Will build from source automatically
 
 **Requirements**:
-- Go 1.19 or later  
+- Go 1.19 or later
 - GCC or Clang (C compiler)
 - `git`, `make`, `curl` or `wget`
 - Internet connection
@@ -933,4 +933,4 @@ Tests are organized to directly mirror the module structure:
 **Go Version**: 1.19+
 **Architecture**: Modular design with integrated PDFCPU functionality
 **Test Coverage**: 81.8% with comprehensive PDFCPU test suite
-**Last Updated**: 2024
+**Last Updated**: 2025
