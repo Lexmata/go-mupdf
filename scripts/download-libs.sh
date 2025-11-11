@@ -4,9 +4,31 @@
 
 set -euo pipefail
 
-# Detect platform
-GOOS=$(go env GOOS 2>/dev/null || uname -s | tr '[:upper:]' '[:lower:]')
-GOARCH=$(go env GOARCH 2>/dev/null || uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+# Detect platform (HOST architecture, not cross-compile target)
+# We need to detect the actual machine architecture, not any Go cross-compile settings
+detect_host_os() {
+    local os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$os" in
+        linux*)   echo "linux" ;;
+        darwin*)  echo "darwin" ;;
+        mingw*|msys*|cygwin*) echo "windows" ;;
+        *)        echo "$os" ;;
+    esac
+}
+
+detect_host_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)     echo "amd64" ;;
+        aarch64|arm64)    echo "arm64" ;;
+        armv7l)           echo "arm" ;;
+        i386|i686)        echo "386" ;;
+        *)                echo "$arch" ;;
+    esac
+}
+
+GOOS=$(detect_host_os)
+GOARCH=$(detect_host_arch)
 PLATFORM="${GOOS}-${GOARCH}"
 
 # Project directories
@@ -31,8 +53,15 @@ fi
 
 DOWNLOAD_URL="https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-${VERSION}-${PLATFORM}.tar.gz"
 
-echo "Downloading pre-built MuPDF libraries for ${PLATFORM}..."
-echo "URL: ${DOWNLOAD_URL}"
+echo "========================================"
+echo "Downloading pre-built MuPDF libraries"
+echo "========================================"
+echo "Host OS:           ${GOOS}"
+echo "Host Architecture: ${GOARCH}"
+echo "Platform:          ${PLATFORM}"
+echo "Version:           ${VERSION}"
+echo "URL:               ${DOWNLOAD_URL}"
+echo "========================================"
 
 # Create temporary directory for download
 TEMP_DIR=$(mktemp -d)

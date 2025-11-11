@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2025-11-11
+
+### 🐛 Bug Fixes
+- **Fixed architecture detection in download script** (CRITICAL)
+  - `download-libs.sh` now correctly detects host architecture using `uname -m`
+  - Previously used `go env GOARCH` which could be affected by cross-compilation env vars
+  - Fixes issue where ARM64 libraries were downloaded on x86_64/amd64 systems
+  - Added diagnostic output showing detected OS, architecture, and platform
+  - **Impact**: Users with `GOARCH` or `GOOS` env vars set will now get correct libraries
+  - Resolves linker errors: `skipping incompatible libmupdf.a`
+
+### ♻️ Removed
+- **Removed Darwin (macOS) cross-compiled builds**
+  - OSXCross builds removed from pipeline
+  - macOS users will build from source automatically (5-10 minutes)
+  - Linux AMD64 and ARM64 pre-built libraries remain available
+  - Does not affect functionality - source build works perfectly
+
 ## [1.4.4] - 2025-11-11
 
 ### ✨ Added
