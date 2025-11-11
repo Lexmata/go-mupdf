@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+- **Multi-Platform Support!** ARM64 builds now available
+  - Added linux-arm64 to release pipeline
+  - Pre-built libraries for both AMD64 and ARM64
+  - Cross-compilation support with QEMU
+
 ## [1.4.0] - 2025-11-10
 
 ### 🚀 Improved
