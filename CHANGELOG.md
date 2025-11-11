@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2025-11-11
+
+### ♻️ Removed
+- **Removed redundant "Build Release Artifacts" step**
+  - Source archives available directly from Bitbucket/Git
+  - Documentation accessible in repository
+  - Focus on core value: pre-built MuPDF libraries
+  - Saves ~5-8 minutes per release
+  - Reduces artifact storage and complexity
+
 ## [1.4.2] - 2025-11-11
 
 ### 🐛 Fixed
