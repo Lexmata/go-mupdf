@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.4] - 2025-11-11
+
+### ✨ Added
+- **Cross-compiled Darwin builds!** macOS binaries now build automatically
+  - Using OSXCross toolchain (`crazymax/osxcross:latest`) to cross-compile from Linux
+  - darwin-amd64 and darwin-arm64 now fully automated
+  - No need for macOS runners or GitHub Actions
+  - All four major platforms now have instant downloads!
+  - Builds run in parallel alongside Linux builds (~12 minutes total)
+
 ## [1.4.3] - 2025-11-11
 
 ### ♻️ Removed
