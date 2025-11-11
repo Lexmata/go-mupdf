@@ -30,8 +30,9 @@ help:
 
 # Setup MuPDF libraries (download pre-built or build from source)
 setup:
-	@echo "Setting up MuPDF libraries..."
-	@./scripts/setup-mupdf.sh
+	@echo "Setting up MuPDF libraries (trying pre-built first)..."
+	@chmod +x scripts/install.sh scripts/download-libs.sh
+	@./scripts/install.sh
 
 # Build MuPDF from source
 mupdf-build:

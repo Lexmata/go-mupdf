@@ -99,36 +99,43 @@ go build
 
 See [Static Library Distribution Guide](docs/STATIC_LIBRARY_DISTRIBUTION.md) for details.
 
-#### Option 3: Using in Your Own Project
+#### Option 3: Using in Your Own Project ⚡
 
-When using go-mupdf as a dependency, you need to set up MuPDF before building:
+**Quick start** - clone into your workspace and let the setup script handle everything:
 
 ```bash
 # In your project directory
 go get bitbucket.org/lexmata/go-mupdf@latest
 
-# Run the setup script to clone and build MuPDF
-cd $(go list -m -f '{{.Dir}}' bitbucket.org/lexmata/go-mupdf)
-go generate ./pkg/mupdf
+# Clone the repository to get setup scripts
+git clone https://bitbucket.org/lexmata/go-mupdf.git
+cd go-mupdf
 
-# Return to your project and build
-cd -
+# One-time setup: downloads pre-built libraries (or builds from source if unavailable)
+make setup
+
+# Now you can use go-mupdf in your projects
+cd ../your-project
 go build
 ```
 
-**How it works**: The `go generate` command:
-1. Clones MuPDF 1.26.11 repository with `--recurse-submodules`
-2. Extracts to `third_party/mupdf` in the module directory
-3. Builds the static libraries with `USE_SYSTEM_LIBS=no` to use bundled dependencies
-4. Takes 5-10 minutes on first run
+**How it works**: 
+- `make setup` tries to download pre-built MuPDF libraries from CI/CD
+- Libraries are installed to the project's `third_party/mupdf/` directory
+- If pre-built libraries aren't available, it automatically builds from source
+- Takes < 10 seconds for download, or 5-10 minutes for source build
+
+**Supported Platforms** (with pre-built libraries):
+- ✅ **linux/amd64** - Instant download!
+- ⚠️ **Other platforms** - Will build from source automatically
 
 **Requirements**:
-- **Git** (for cloning submodules)
-- **Make** (build tool)
-- **GCC or Clang** (C compiler)
-- Internet connection (for first-time MuPDF clone)
+- Go 1.19 or later  
+- GCC or Clang (C compiler)
+- `git`, `make`, `curl` or `wget`
+- Internet connection
 
-**Why submodules?** MuPDF uses custom versions of dependencies (like lcms2 multi-threaded fork) that are incompatible with most system libraries, so we must build with bundled submodules.
+**Note**: Like most Go+CGO projects (e.g., go-sqlite3, go-opencv), go-mupdf requires a one-time setup step to prepare native libraries. The `go get` command alone cannot build CGO dependencies.
 
 #### Option 4: Manual Build with Submodules
 
