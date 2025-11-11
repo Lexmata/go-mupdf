@@ -1,18 +1,20 @@
 # macOS Builds Guide
 
-This document explains how to build go-mupdf on macOS. **Automated builds are now enabled** for Bitbucket Premium users!
+This document explains how to build go-mupdf on macOS and enable automated macOS builds.
 
-## ✅ Automated Builds (Enabled)
+## ⚠️ Bitbucket Limitation
 
-**Pre-built libraries are automatically generated** for darwin-amd64 and darwin-arm64 on every release tag! Just run:
+**Bitbucket Pipelines does not provide managed macOS runners**, even with Premium. To get automated macOS builds, you have two options:
 
-```bash
-git clone https://bitbucket.org/lexmata/go-mupdf.git
-cd go-mupdf
-make setup  # Downloads pre-built libraries instantly!
-```
+1. **GitHub Actions** (Recommended) - Free macOS runners, builds upload to Bitbucket
+2. **Self-hosted runners** - Run your own macOS build machines
 
-No manual build needed unless you're on an unsupported platform or want to customize the build.
+## Current Status
+
+- ✅ **Linux AMD64** - Automated in Bitbucket Pipelines
+- ✅ **Linux ARM64** - Automated in Bitbucket Pipelines (cross-compile)
+- ⚠️ **Darwin AMD64** - Requires GitHub Actions or self-hosted runner
+- ⚠️ **Darwin ARM64** - Requires GitHub Actions or self-hosted runner
 
 ## Quick Start (Manual Build)
 
@@ -38,20 +40,14 @@ go build ./pkg/mupdf/
 
 ## Automated Builds with Bitbucket Pipelines
 
-### Requirements
+### ⚠️ Limitation
 
-- **Bitbucket Premium or above** ✅ (You have this!)
-- macOS runner allocation in your workspace settings
+**Bitbucket Pipelines does not offer managed macOS runners**, regardless of your plan tier. Unlike GitHub Actions, you cannot simply specify a macOS image and have Bitbucket run it.
 
-### Current Status
+### Options for Automated macOS Builds
 
-✅ **macOS builds are ENABLED and running!**
-
-The pipeline automatically builds for both:
-- **darwin-amd64** - Intel Macs (using `macos-12-xcode-14`)
-- **darwin-arm64** - Apple Silicon (using `macos-14-xcode-15`)
-
-All builds run in parallel on tagged releases and upload to Bitbucket Downloads.
+1. **GitHub Actions** (Recommended - see below)
+2. **Self-hosted Bitbucket runners** (requires your own Mac hardware)
 
 ### Pipeline Configuration for macOS
 

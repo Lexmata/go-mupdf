@@ -421,18 +421,20 @@ pipelines:
               - dist/*.sha256
         - step:
             name: Build Static Library Distribution (Darwin AMD64)
-            image: macos-12-xcode-14
+            image: crazymax/osxcross:latest
             caches:
               - go
             script:
-              - brew install make gcc pkg-config
+              - apt-get update && apt-get install -y git curl wget
               - git submodule update --init --recursive
               - export TAG_NAME=$BITBUCKET_TAG
               - export VERSION=${TAG_NAME#v}
               - export GOOS=darwin
               - export GOARCH=amd64
               - export CGO_ENABLED=1
-              - 'echo "Building static library distribution for darwin-amd64 version: $VERSION"'
+              - export CC=o64-clang
+              - export CXX=o64-clang++
+              - 'echo "Cross-compiling for darwin-amd64 version: $VERSION"'
               - ./scripts/build-static-libs.sh
               - echo "=== Darwin AMD64 Distribution Package Created ==="
               - ls -lh dist/
@@ -480,18 +482,20 @@ pipelines:
               - dist/*.sha256
         - step:
             name: Build Static Library Distribution (Darwin ARM64)
-            image: macos-14-xcode-15
+            image: crazymax/osxcross:latest
             caches:
               - go
             script:
-              - brew install make gcc pkg-config
+              - apt-get update && apt-get install -y git curl wget
               - git submodule update --init --recursive
               - export TAG_NAME=$BITBUCKET_TAG
               - export VERSION=${TAG_NAME#v}
               - export GOOS=darwin
               - export GOARCH=arm64
               - export CGO_ENABLED=1
-              - 'echo "Building static library distribution for darwin-arm64 version: $VERSION"'
+              - export CC=oa64-clang
+              - export CXX=oa64-clang++
+              - 'echo "Cross-compiling for darwin-arm64 version: $VERSION"'
               - ./scripts/build-static-libs.sh
               - echo "=== Darwin ARM64 Distribution Package Created ==="
               - ls -lh dist/
