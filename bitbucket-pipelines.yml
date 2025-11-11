@@ -548,6 +548,34 @@ pipelines:
           artifacts:
             - dist/*.tar.gz
             - dist/*.sha256
+      - step:
+          name: Build Static Library Distribution (Darwin AMD64)
+          image: atlassian/default-image:latest
+          caches:
+            - go
+          script:
+            - echo "⚠️  macOS AMD64 builds require macOS runners"
+            - echo "This step would use: image: macos-12-xcode-14"
+            - echo "Skipping for now - see docs/MACOS_BUILDS.md for manual build instructions"
+            - echo "To enable: Update your Bitbucket plan to include macOS runners"
+            - exit 0
+          artifacts:
+            - dist/*.tar.gz
+            - dist/*.sha256
+      - step:
+          name: Build Static Library Distribution (Darwin ARM64)
+          image: atlassian/default-image:latest
+          caches:
+            - go
+          script:
+            - echo "⚠️  macOS ARM64 builds require macOS ARM runners"
+            - echo "This step would use: image: macos-14-xcode-15 (M1/M2)"
+            - echo "Skipping for now - see docs/MACOS_BUILDS.md for manual build instructions"
+            - echo "To enable: Update your Bitbucket plan to include macOS runners"
+            - exit 0
+          artifacts:
+            - dist/*.tar.gz
+            - dist/*.sha256
 
   pull-requests:
     '**':

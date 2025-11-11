@@ -8,10 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### ✨ Added
-- **Multi-Platform Support!** ARM64 builds now available
-  - Added linux-arm64 to release pipeline
-  - Pre-built libraries for both AMD64 and ARM64
-  - Cross-compilation support with QEMU
+- **Multi-Platform Support!** ARM64 and macOS builds now available
+  - Added linux-arm64 to release pipeline with cross-compilation
+  - Pre-built libraries for linux-amd64 and linux-arm64
+  - macOS build documentation and pipeline scaffolding
+  - See `docs/MACOS_BUILDS.md` for macOS build instructions
+
+### 📝 Changed
+- Updated pipeline with placeholder steps for Darwin (macOS) builds
+- macOS builds require Bitbucket Premium (macOS runners) or manual builds
+- Added comprehensive macOS build guide with GitHub Actions alternative
 
 ## [1.4.0] - 2025-11-10
 
