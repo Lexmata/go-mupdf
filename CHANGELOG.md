@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.6] - 2025-11-11
+
+### 🐛 Bug Fixes
+- **Fixed platform detection in build script for cross-compilation** (CRITICAL)
+  - `build-static-libs.sh` now respects `GOOS` and `GOARCH` environment variables
+  - Previously used `uname` which always returned host architecture (amd64)
+  - **This caused ARM64 builds to create and upload `linux-amd64` packages, overwriting the real AMD64 build**
+  - ARM64 packages were being uploaded with wrong architecture name
+  - Now correctly creates `linux-arm64` packages when `GOARCH=arm64` is set
+  - Both AMD64 and ARM64 builds will now upload correctly without conflicts
+
 ## [1.4.5] - 2025-11-11
 
 ### 🐛 Bug Fixes
