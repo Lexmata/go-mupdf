@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2025-11-11
+
+### 🐛 Fixed
+- **Parallel Builds!** All four platform builds now run simultaneously
+  - Reduced total build time from ~40 minutes to ~15 minutes
+  - AMD64, ARM64, Darwin AMD64, and Darwin ARM64 all build in parallel
+  - Fixed YAML indentation to properly configure parallel execution
+
 ## [1.4.1] - 2025-11-11
 
 ### ✨ Added
