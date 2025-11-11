@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Improved
+- **Simplified Installation!** Pre-built libraries auto-download on setup
+  - `make setup` tries pre-built download first, falls back to source build
+  - Downloads from CI/CD artifacts to project's `third_party/mupdf/`
+  - Takes <10 seconds for supported platforms (vs 5-10 minutes for source build)
+  - Graceful fallback for unsupported platforms
+
+### ✨ Added
+- `scripts/download-libs.sh` - Downloads pre-built libraries from Bitbucket CI/CD
+- `scripts/install.sh` - Smart setup script (download first, build as fallback)
+
+### 📝 Changed
+- `make setup` now intelligently tries download before building
+- Updated README with clearer setup instructions
+- Documented that go-mupdf requires one-time setup like other Go+CGO projects
+
+### 💡 Why This Approach?
+- ✅ Instant setup for linux/amd64 (most common platform)
+- ✅ No repository bloat (libraries downloaded, not committed)
+- ✅ Works with both cloned repos and go get workflows
+- ✅ Automatic fallback for unsupported platforms/developers
+- ✅ Leverages existing CI/CD infrastructure
+
 ## [1.3.2] - 2025-11-10
 
 ### 🐛 Fixed
