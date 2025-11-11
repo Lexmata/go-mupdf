@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-11-10
+
 ### 🚀 Improved
 - **Simplified Installation!** Pre-built libraries auto-download on setup
   - `make setup` tries pre-built download first, falls back to source build
@@ -22,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make setup` now intelligently tries download before building
 - Updated README with clearer setup instructions
 - Documented that go-mupdf requires one-time setup like other Go+CGO projects
+- Updated year references from 2024 to 2025
 
 ### 💡 Why This Approach?
 - ✅ Instant setup for linux/amd64 (most common platform)
