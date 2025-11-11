@@ -35,9 +35,11 @@ log_error() {
 }
 
 # Detect platform
+# Respects GOOS/GOARCH environment variables for cross-compilation
+# Falls back to uname for native builds
 detect_platform() {
-    local os=$(uname -s | tr '[:upper:]' '[:lower:]')
-    local arch=$(uname -m)
+    local os="${GOOS:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
+    local arch="${GOARCH:-$(uname -m)}"
 
     case "$os" in
         linux*)
@@ -46,7 +48,7 @@ detect_platform() {
         darwin*)
             os="darwin"
             ;;
-        mingw*|msys*|cygwin*)
+        mingw*|msys*|cygwin*|windows)
             os="windows"
             ;;
         *)
@@ -62,8 +64,11 @@ detect_platform() {
         aarch64|arm64)
             arch="arm64"
             ;;
-        armv7l)
+        armv7l|arm)
             arch="arm"
+            ;;
+        386|i386|i686)
+            arch="386"
             ;;
         *)
             log_error "Unsupported architecture: $arch"
