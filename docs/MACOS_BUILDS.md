@@ -1,6 +1,18 @@
 # macOS Builds Guide
 
-This document explains how to build go-mupdf on macOS and how to enable automated macOS builds in CI/CD.
+This document explains how to build go-mupdf on macOS. **Automated builds are now enabled** for Bitbucket Premium users!
+
+## ✅ Automated Builds (Enabled)
+
+**Pre-built libraries are automatically generated** for darwin-amd64 and darwin-arm64 on every release tag! Just run:
+
+```bash
+git clone https://bitbucket.org/lexmata/go-mupdf.git
+cd go-mupdf
+make setup  # Downloads pre-built libraries instantly!
+```
+
+No manual build needed unless you're on an unsupported platform or want to customize the build.
 
 ## Quick Start (Manual Build)
 
@@ -28,14 +40,18 @@ go build ./pkg/mupdf/
 
 ### Requirements
 
-- **Bitbucket Premium or above** - macOS runners are not available on free tier
+- **Bitbucket Premium or above** ✅ (You have this!)
 - macOS runner allocation in your workspace settings
 
-### Enabling macOS Builds
+### Current Status
 
-1. **Update your Bitbucket plan** to include macOS runners
-2. **Uncomment the macOS build steps** in `bitbucket-pipelines.yml`
-3. **Replace placeholder steps** with the actual build steps below
+✅ **macOS builds are ENABLED and running!**
+
+The pipeline automatically builds for both:
+- **darwin-amd64** - Intel Macs (using `macos-12-xcode-14`)
+- **darwin-arm64** - Apple Silicon (using `macos-14-xcode-15`)
+
+All builds run in parallel on tagged releases and upload to Bitbucket Downloads.
 
 ### Pipeline Configuration for macOS
 
@@ -188,28 +204,28 @@ jobs:
             goarch: amd64
           - os: macos-14
             goarch: arm64
-    
+
     runs-on: ${{ matrix.os }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-      
+
       - name: Install dependencies
         run: brew install make gcc pkg-config
-      
+
       - name: Build distribution
         env:
           GOOS: darwin
           GOARCH: ${{ matrix.goarch }}
           TAG_NAME: ${{ github.ref_name }}
         run: ./scripts/build-static-libs.sh
-      
+
       - name: Upload to Bitbucket
         env:
           BITBUCKET_USERNAME: ${{ secrets.BITBUCKET_USERNAME }}

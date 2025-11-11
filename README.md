@@ -128,8 +128,8 @@ go build
 **Supported Platforms** (with pre-built libraries):
 - ✅ **linux/amd64** - Instant download!
 - ✅ **linux/arm64** - Instant download!
-- 📦 **darwin/amd64** - Manual build (see [macOS Guide](docs/MACOS_BUILDS.md))
-- 📦 **darwin/arm64** - Manual build (see [macOS Guide](docs/MACOS_BUILDS.md))
+- ✅ **darwin/amd64** (Intel Mac) - Instant download!
+- ✅ **darwin/arm64** (Apple Silicon) - Instant download!
 - ⚠️ **Other platforms** - Will build from source automatically
 
 **Requirements**:
