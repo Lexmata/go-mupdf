@@ -127,6 +127,7 @@ go build
 
 **Supported Platforms** (with pre-built libraries):
 - ✅ **linux/amd64** - Instant download!
+- ✅ **linux/arm64** - Instant download!
 - ⚠️ **Other platforms** - Will build from source automatically
 
 **Requirements**:
