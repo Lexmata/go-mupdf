@@ -401,7 +401,7 @@ pipelines:
             - releases/**
             - release-coverage.out
       - step:
-          name: Build Static Library Distribution
+          name: Build Static Library Distribution (AMD64)
           caches:
             - go
             - mupdf-libs
@@ -411,9 +411,10 @@ pipelines:
             - git submodule update --init --recursive
             - export TAG_NAME=$BITBUCKET_TAG
             - export VERSION=${TAG_NAME#v}
-            - 'echo "Building static library distribution for version: $VERSION"'
+            - export GOARCH=amd64
+            - 'echo "Building static library distribution for linux-amd64 version: $VERSION"'
             - ./scripts/build-static-libs.sh
-            - echo "=== Distribution Package Created ==="
+            - echo "=== AMD64 Distribution Package Created ==="
             - ls -lh dist/
             - cat dist/*.sha256
             - echo "===================================="
@@ -467,6 +468,200 @@ pipelines:
                 if [ -z "$TOKEN" ]; then
                   echo "⚠️  No authentication token available, skipping upload"
                 fi
+              fi
+          artifacts:
+            - dist/*.tar.gz
+            - dist/*.sha256
+      - step:
+          name: Build Static Library Distribution (ARM64)
+          caches:
+            - go
+          script:
+            - apt-get update
+            - apt-get install -y build-essential pkg-config unzip gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-user-static
+            - git submodule update --init --recursive
+            - export TAG_NAME=$BITBUCKET_TAG
+            - export VERSION=${TAG_NAME#v}
+            - export GOOS=linux
+            - export GOARCH=arm64
+            - export CC=aarch64-linux-gnu-gcc
+            - export CXX=aarch64-linux-gnu-g++
+            - export CGO_ENABLED=1
+            - 'echo "Building static library distribution for linux-arm64 version: $VERSION"'
+            - 'echo "Cross-compiling MuPDF for ARM64..."'
+            - ./scripts/build-static-libs.sh
+            - echo "=== ARM64 Distribution Package Created ==="
+            - ls -lh dist/
+            - cat dist/*.sha256
+            - echo "===================================="
+          after-script:
+            - |
+              TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
+              USERNAME="${BITBUCKET_USERNAME}"
+              if [ ! -z "$TOKEN" ] && [ ! -z "$USERNAME" ]; then
+                echo "Uploading ARM64 distribution packages to Bitbucket Downloads..."
+                UPLOAD_SUCCESS=true
+                for file in dist/*.tar.gz dist/*.sha256; do
+                  if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    echo "Uploading $filename..."
+                    RESPONSE=$(curl -s -X POST \
+                      "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
+                      -u "$USERNAME:$TOKEN" \
+                      -F "files=@$file" \
+                      -w "\n%{http_code}")
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | sed '$d')
+                    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+                      echo "✓ Uploaded $filename successfully (HTTP $HTTP_CODE)"
+                    else
+                      echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
+                      echo "Response: $BODY"
+                      UPLOAD_SUCCESS=false
+                    fi
+                  fi
+                done
+                if [ "$UPLOAD_SUCCESS" = "false" ]; then
+                  echo ""
+                  echo "⚠️  UPLOAD FAILED - Authentication Issue"
+                  echo ""
+                  echo "Required Repository Variables:"
+                  echo "1. BITBUCKET_USERNAME - Your Bitbucket account username/email"
+                  echo "2. BITBUCKET_DOWNLOADS_TOKEN - App password with 'Repositories: Write'"
+                  echo ""
+                  echo "Setup Instructions:"
+                  echo "1. Go to: https://bitbucket.org/account/settings/app-passwords/"
+                  echo "2. Create app password with 'Repositories: Write' permission"
+                  echo "3. Add both variables at: Repository Settings > Pipelines > Repository variables"
+                  echo ""
+                  echo "Files are available as pipeline artifacts in the meantime."
+                fi
+              else
+                if [ -z "$USERNAME" ]; then
+                  echo "⚠️  BITBUCKET_USERNAME not set, skipping upload"
+                  echo "Set your Bitbucket username as a repository variable"
+                fi
+                if [ -z "$TOKEN" ]; then
+                  echo "⚠️  No authentication token available, skipping upload"
+                fi
+              fi
+          artifacts:
+            - dist/*.tar.gz
+            - dist/*.sha256
+      - step:
+          name: Build Static Library Distribution (Darwin AMD64)
+          image: macos-12-xcode-14
+          caches:
+            - go
+          script:
+            - brew install make gcc pkg-config
+            - git submodule update --init --recursive
+            - export TAG_NAME=$BITBUCKET_TAG
+            - export VERSION=${TAG_NAME#v}
+            - export GOOS=darwin
+            - export GOARCH=amd64
+            - export CGO_ENABLED=1
+            - 'echo "Building static library distribution for darwin-amd64 version: $VERSION"'
+            - ./scripts/build-static-libs.sh
+            - echo "=== Darwin AMD64 Distribution Package Created ==="
+            - ls -lh dist/
+            - cat dist/*.sha256
+            - echo "===================================="
+          after-script:
+            - |
+              TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
+              USERNAME="${BITBUCKET_USERNAME}"
+              if [ ! -z "$TOKEN" ] && [ ! -z "$USERNAME" ]; then
+                echo "Uploading Darwin AMD64 distribution packages to Bitbucket Downloads..."
+                UPLOAD_SUCCESS=true
+                for file in dist/*.tar.gz dist/*.sha256; do
+                  if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    echo "Uploading $filename..."
+                    RESPONSE=$(curl -s -X POST \
+                      "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
+                      -u "$USERNAME:$TOKEN" \
+                      -F "files=@$file" \
+                      -w "\n%{http_code}")
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | sed '$d')
+                    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+                      echo "✓ Uploaded $filename successfully (HTTP $HTTP_CODE)"
+                    else
+                      echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
+                      echo "Response: $BODY"
+                      UPLOAD_SUCCESS=false
+                    fi
+                  fi
+                done
+                if [ "$UPLOAD_SUCCESS" = "false" ]; then
+                  echo ""
+                  echo "⚠️  UPLOAD FAILED - Authentication Issue"
+                  echo ""
+                  echo "Files are available as pipeline artifacts in the meantime."
+                fi
+              else
+                echo "⚠️  Authentication not configured, skipping upload"
+                echo "Files are available as pipeline artifacts"
+              fi
+          artifacts:
+            - dist/*.tar.gz
+            - dist/*.sha256
+      - step:
+          name: Build Static Library Distribution (Darwin ARM64)
+          image: macos-14-xcode-15
+          caches:
+            - go
+          script:
+            - brew install make gcc pkg-config
+            - git submodule update --init --recursive
+            - export TAG_NAME=$BITBUCKET_TAG
+            - export VERSION=${TAG_NAME#v}
+            - export GOOS=darwin
+            - export GOARCH=arm64
+            - export CGO_ENABLED=1
+            - 'echo "Building static library distribution for darwin-arm64 version: $VERSION"'
+            - ./scripts/build-static-libs.sh
+            - echo "=== Darwin ARM64 Distribution Package Created ==="
+            - ls -lh dist/
+            - cat dist/*.sha256
+            - echo "===================================="
+          after-script:
+            - |
+              TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
+              USERNAME="${BITBUCKET_USERNAME}"
+              if [ ! -z "$TOKEN" ] && [ ! -z "$USERNAME" ]; then
+                echo "Uploading Darwin ARM64 distribution packages to Bitbucket Downloads..."
+                UPLOAD_SUCCESS=true
+                for file in dist/*.tar.gz dist/*.sha256; do
+                  if [ -f "$file" ]; then
+                    filename=$(basename "$file")
+                    echo "Uploading $filename..."
+                    RESPONSE=$(curl -s -X POST \
+                      "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
+                      -u "$USERNAME:$TOKEN" \
+                      -F "files=@$file" \
+                      -w "\n%{http_code}")
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | sed '$d')
+                    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+                      echo "✓ Uploaded $filename successfully (HTTP $HTTP_CODE)"
+                    else
+                      echo "✗ Failed to upload $filename (HTTP $HTTP_CODE)"
+                      echo "Response: $BODY"
+                      UPLOAD_SUCCESS=false
+                    fi
+                  fi
+                done
+                if [ "$UPLOAD_SUCCESS" = "false" ]; then
+                  echo ""
+                  echo "⚠️  UPLOAD FAILED - Authentication Issue"
+                  echo ""
+                  echo "Files are available as pipeline artifacts in the meantime."
+                fi
+              else
+                echo "⚠️  Authentication not configured, skipping upload"
+                echo "Files are available as pipeline artifacts"
               fi
           artifacts:
             - dist/*.tar.gz
