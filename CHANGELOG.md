@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2025-11-11
+
 ### ✨ Added
 - **Full Multi-Platform Support!** All major platforms now have automated builds
   - ✅ **linux-amd64** - Automated builds with pre-built libraries
