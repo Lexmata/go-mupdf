@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+- **Fixed architecture detection in download script**
+  - `download-libs.sh` now correctly detects host architecture using `uname -m`
+  - Previously used `go env GOARCH` which could be affected by cross-compilation env vars
+  - Fixes issue where ARM64 libraries were downloaded on x86_64/amd64 systems
+  - Added diagnostic output showing detected OS, architecture, and platform
+  - **Impact**: Users with `GOARCH` or `GOOS` env vars set will now get correct libraries
+
 ### ♻️ Removed
 - **Removed Darwin (macOS) cross-compiled builds**
   - OSXCross builds removed from pipeline
