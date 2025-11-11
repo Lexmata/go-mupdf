@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ♻️ Removed
+- **Removed Darwin (macOS) cross-compiled builds**
+  - OSXCross builds removed from pipeline
+  - macOS users will build from source (5-10 minutes)
+  - Linux AMD64 and ARM64 pre-built libraries remain available
+
 ## [1.4.4] - 2025-11-11
 
 ### ✨ Added
