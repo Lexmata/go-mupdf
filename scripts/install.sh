@@ -8,8 +8,9 @@ echo "=== go-mupdf Quick Setup ==="
 echo ""
 
 # Detect platform
-GOOS=$(go env GOOS 2>/dev/null || uname -s | tr '[:upper:]' '[:lower:]')
-GOARCH=$(go env GOARCH 2>/dev/null || uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+# Use Go's environment variables if available (respects GOOS/GOARCH for cross-compilation)
+export GOOS=$(go env GOOS 2>/dev/null || uname -s | tr '[:upper:]' '[:lower:]')
+export GOARCH=$(go env GOARCH 2>/dev/null || uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 PLATFORM="${GOOS}-${GOARCH}"
 
 echo "Platform: ${PLATFORM}"

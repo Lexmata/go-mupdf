@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+- **Fixed cross-compilation library download for ARM64 in CI/CD** (CRITICAL)
+  - Download scripts now respect `GOOS` and `GOARCH` environment variables
+  - When cross-compiling with `GOARCH=arm64`, correct ARM64 libraries are downloaded
+  - Falls back to `uname` detection for normal (non-cross-compile) usage
+  - Fixes issue where CI/CD ARM64 builds downloaded wrong architecture libraries
+  - **Impact**: ARM64 cross-compilation builds in CI/CD will now work correctly
+  - Affected scripts: `download-libs.sh`, `install-prebuilt-libs.sh`, `setup-mupdf.sh`, `install.sh`
+
 ## [1.4.6] - 2025-11-11
 
 ### 🐛 Bug Fixes
