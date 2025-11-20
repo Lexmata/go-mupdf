@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.7] - 2025-11-20
+
 ### 🐛 Bug Fixes
 - **Fixed cross-compilation library download for ARM64 in CI/CD** (CRITICAL)
   - Download scripts now respect `GOOS` and `GOARCH` environment variables
