@@ -42,21 +42,27 @@ check_existing_libs() {
 }
 
 # Detect platform
+# Respects GOOS/GOARCH environment variables for cross-compilation
+# Falls back to uname for native builds
 detect_platform() {
-    local os=$(uname -s | tr '[:upper:]' '[:lower:]')
-    local arch=$(uname -m)
+    # Detect OS - prefer GOOS if set
+    local os="${GOOS:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
+    
+    # Detect architecture - prefer GOARCH if set
+    local arch="${GOARCH:-$(uname -m)}"
     
     case "$os" in
         linux*) os="linux" ;;
         darwin*) os="darwin" ;;
-        mingw*|msys*|cygwin*) os="windows" ;;
+        mingw*|msys*|cygwin*|windows) os="windows" ;;
         *) os="unknown" ;;
     esac
     
     case "$arch" in
         x86_64|amd64) arch="amd64" ;;
         aarch64|arm64) arch="arm64" ;;
-        armv7l) arch="arm" ;;
+        armv7l|arm) arch="arm" ;;
+        386|i386|i686) arch="386" ;;
         *) arch="unknown" ;;
     esac
     

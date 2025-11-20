@@ -4,9 +4,17 @@
 
 set -euo pipefail
 
-# Detect platform (HOST architecture, not cross-compile target)
-# We need to detect the actual machine architecture, not any Go cross-compile settings
-detect_host_os() {
+# Detect platform
+# Respects GOOS/GOARCH environment variables for cross-compilation
+# Falls back to uname for native builds
+detect_target_os() {
+    # If GOOS is set (cross-compilation), use it
+    if [ -n "${GOOS:-}" ]; then
+        echo "$GOOS"
+        return
+    fi
+    
+    # Otherwise detect from uname
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     case "$os" in
         linux*)   echo "linux" ;;
@@ -16,7 +24,20 @@ detect_host_os() {
     esac
 }
 
-detect_host_arch() {
+detect_target_arch() {
+    # If GOARCH is set (cross-compilation), use it
+    if [ -n "${GOARCH:-}" ]; then
+        case "$GOARCH" in
+            amd64)   echo "amd64" ;;
+            arm64)   echo "arm64" ;;
+            arm)     echo "arm" ;;
+            386)     echo "386" ;;
+            *)       echo "$GOARCH" ;;
+        esac
+        return
+    fi
+    
+    # Otherwise detect from uname
     local arch=$(uname -m)
     case "$arch" in
         x86_64|amd64)     echo "amd64" ;;
@@ -27,9 +48,9 @@ detect_host_arch() {
     esac
 }
 
-GOOS=$(detect_host_os)
-GOARCH=$(detect_host_arch)
-PLATFORM="${GOOS}-${GOARCH}"
+TARGET_OS=$(detect_target_os)
+TARGET_ARCH=$(detect_target_arch)
+PLATFORM="${TARGET_OS}-${TARGET_ARCH}"
 
 # Project directories
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,11 +77,11 @@ DOWNLOAD_URL="https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-${VERSIO
 echo "========================================"
 echo "Downloading pre-built MuPDF libraries"
 echo "========================================"
-echo "Host OS:           ${GOOS}"
-echo "Host Architecture: ${GOARCH}"
-echo "Platform:          ${PLATFORM}"
-echo "Version:           ${VERSION}"
-echo "URL:               ${DOWNLOAD_URL}"
+echo "Target OS:           ${TARGET_OS}"
+echo "Target Architecture: ${TARGET_ARCH}"
+echo "Platform:            ${PLATFORM}"
+echo "Version:             ${VERSION}"
+echo "URL:                 ${DOWNLOAD_URL}"
 echo "========================================"
 
 # Create temporary directory for download
