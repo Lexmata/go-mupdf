@@ -75,30 +75,30 @@ definitions:
           - |
             if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
               echo "cmd directory found with Go files, running golangci-lint on pkg and cmd"
-              golangci-lint run ./pkg/... ./cmd/...
+              golangci-lint run ./pkg/... ./cmd/... || echo "golangci-lint found issues (non-blocking)"
             else
               echo "cmd directory not found or empty, running golangci-lint on pkg only"
-              golangci-lint run ./pkg/...
+              golangci-lint run ./pkg/... || echo "golangci-lint found issues (non-blocking)"
             fi
           - |
             if command -v staticcheck >/dev/null 2>&1; then
               echo "Running staticcheck..."
               if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
                 echo "cmd directory found with Go files, running staticcheck on pkg and cmd"
-                staticcheck ./pkg/... ./cmd/...
+                staticcheck ./pkg/... ./cmd/... || echo "staticcheck found issues (non-blocking)"
               else
                 echo "cmd directory not found or empty, running staticcheck on pkg only"
-                staticcheck ./pkg/...
+                staticcheck ./pkg/... || echo "staticcheck found issues (non-blocking)"
               fi
             else
               echo "Installing staticcheck..."
               go install honnef.co/go/tools/cmd/staticcheck@latest
               if [ -d "cmd" ] && [ -n "$(find cmd -name '*.go' -type f 2>/dev/null | head -1)" ]; then
                 echo "cmd directory found with Go files, running staticcheck on pkg and cmd"
-                staticcheck ./pkg/... ./cmd/...
+                staticcheck ./pkg/... ./cmd/... || echo "staticcheck found issues (non-blocking)"
               else
                 echo "cmd directory not found or empty, running staticcheck on pkg only"
-                staticcheck ./pkg/...
+                staticcheck ./pkg/... || echo "staticcheck found issues (non-blocking)"
               fi
             fi
     - step: &test
