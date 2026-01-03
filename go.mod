@@ -1,8 +1,6 @@
 module bitbucket.org/lexmata/go-mupdf
 
-go 1.24.0
-
-toolchain go1.24.2
+go 1.23.4
 
 require github.com/pdfcpu/pdfcpu v0.11.1
 
