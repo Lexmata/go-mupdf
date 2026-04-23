@@ -7,25 +7,9 @@ package mupdf
 #include <stdio.h>
 #include <string.h>
 
-// CGo cannot access C bitfields directly.
-static void set_outline_is_open(fz_outline *o, int val) { o->is_open = val; }
-
 // mupdf uses setjmp/longjmp for error handling. Any mupdf function that
 // can throw MUST be called inside fz_try/fz_catch or the process aborts.
 // CGo cannot use fz_try macros directly, so we wrap the operations in C.
-
-typedef struct {
-	const char *title;
-	const char *uri;
-	int is_open;
-} go_outline_item;
-
-typedef struct {
-	go_outline_item *items;
-	int count;
-	int *child_counts;    // number of children per item
-	int **child_indices;  // indices into a flat items array for children
-} go_outline_flat;
 
 // Insert a single item at the current iterator position.
 static int safe_insert_item(fz_context *ctx, fz_outline_iterator *iter,

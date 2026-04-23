@@ -66,10 +66,6 @@ func TestExtractBookmarks_AfterAdd(t *testing.T) {
 	if extracted[0].Title != "Chapter 1" {
 		t.Errorf("expected 'Chapter 1', got %q", extracted[0].Title)
 	}
-	if len(extracted[0].Children) < 0 {
-		t.Errorf("expected 1 child, got %d", len(extracted[0].Children))
-	}
-
 	info, _ := os.Stat(withBM)
 	if info.Size() == 0 { t.Fatal("output empty") }
 }

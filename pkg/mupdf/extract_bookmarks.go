@@ -4,6 +4,31 @@ package mupdf
 #include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
 #include <stdlib.h>
+
+static fz_document *safe_open_document(fz_context *ctx, const char *path) {
+	fz_document *doc = NULL;
+	fz_try(ctx)
+		doc = fz_open_document(ctx, path);
+	fz_catch(ctx)
+		doc = NULL;
+	return doc;
+}
+
+static fz_outline *safe_load_outline(fz_context *ctx, fz_document *doc) {
+	fz_outline *outline = NULL;
+	fz_try(ctx)
+		outline = fz_load_outline(ctx, doc);
+	fz_catch(ctx)
+		outline = NULL;
+	return outline;
+}
+
+static void safe_drop_document(fz_context *ctx, fz_document *doc) {
+	fz_try(ctx)
+		fz_drop_document(ctx, doc);
+	fz_catch(ctx)
+		;
+}
 */
 import "C"
 
@@ -19,13 +44,13 @@ func ExtractBookmarks(ctx *Context, path string) ([]OutlineItem, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	var doc *C.fz_document
-	doc = C.fz_open_document(ctx.ctx, cPath)
+	doc = C.safe_open_document(ctx.ctx, cPath)
 	if doc == nil {
 		return nil, fmt.Errorf("go-mupdf: ExtractBookmarks: failed to open %s", path)
 	}
-	defer C.fz_drop_document(ctx.ctx, doc)
+	defer C.safe_drop_document(ctx.ctx, doc)
 
-	outline := C.fz_load_outline(ctx.ctx, doc)
+	outline := C.safe_load_outline(ctx.ctx, doc)
 	if outline == nil {
 		return nil, nil
 	}
