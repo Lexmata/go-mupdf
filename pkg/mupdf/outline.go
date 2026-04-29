@@ -59,6 +59,16 @@ static int safe_iter_up(fz_context *ctx, fz_outline_iterator *iter)
 	return ret;
 }
 
+static int safe_iter_prev(fz_context *ctx, fz_outline_iterator *iter)
+{
+	int ret = -1;
+	fz_try(ctx)
+		ret = fz_outline_iterator_prev(ctx, iter);
+	fz_catch(ctx)
+		ret = -1;
+	return ret;
+}
+
 static int safe_iter_delete(fz_context *ctx, fz_outline_iterator *iter)
 {
 	int ret = -1;
@@ -171,8 +181,25 @@ func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineIte
 	return nil
 }
 
+// insertOutlineItems writes items at the iterator's current nesting level.
+//
+// fz_outline_iterator_insert auto-advances past the inserted item (see
+// mupdf/fitz/outline.h), so the cursor after an insert is already at the
+// slot where the NEXT sibling would go. That means:
+//
+//   - No explicit _next is needed between sibling inserts.
+//   - To descend into the just-inserted item's children, we must step
+//     _prev back onto it before calling _down.
+//   - _up returns us to the parent item; we then _next once to restore the
+//     "next sibling slot" position before inserting the following sibling.
+//
+// The previous implementation called _next after every insert, which
+// skipped every other slot, and _down from an already-advanced position,
+// which silently failed to descend. Net effect: only one item survived
+// per level and children were dropped. mupdf would then emit "repaired
+// broken tree structure in outline" when the resulting PDF was read back.
 func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []OutlineItem) {
-	for i, item := range items {
+	for _, item := range items {
 		uri := fmt.Sprintf("#page=%d", item.Page+1)
 		cTitle := C.CString(item.Title)
 		cURI := C.CString(uri)
@@ -181,21 +208,28 @@ func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []
 			isOpen = 1
 		}
 
-		C.safe_insert_item(ctx, iter, cTitle, cURI, isOpen)
+		insertRet := C.safe_insert_item(ctx, iter, cTitle, cURI, isOpen)
 
 		C.free(unsafe.Pointer(cTitle))
 		C.free(unsafe.Pointer(cURI))
 
-		if len(item.Children) > 0 {
-			ret := C.safe_iter_down(ctx, iter)
-			if ret >= 0 {
-				insertOutlineItems(ctx, iter, item.Children)
-				C.safe_iter_up(ctx, iter)
-			}
+		if insertRet < 0 {
+			// Insert failed; do not attempt children, and leave the cursor
+			// where it is for the next sibling attempt.
+			continue
 		}
 
-		if i < len(items)-1 {
-			C.safe_iter_next(ctx, iter)
+		if len(item.Children) > 0 {
+			// Step back to the item we just inserted, descend into it,
+			// recurse to write its children, then ascend and advance past
+			// the parent so the next sibling lands in the right slot.
+			if C.safe_iter_prev(ctx, iter) >= 0 {
+				if C.safe_iter_down(ctx, iter) >= 0 {
+					insertOutlineItems(ctx, iter, item.Children)
+					C.safe_iter_up(ctx, iter)
+				}
+				C.safe_iter_next(ctx, iter)
+			}
 		}
 	}
 }

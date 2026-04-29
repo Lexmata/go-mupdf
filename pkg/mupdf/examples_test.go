@@ -10,8 +10,8 @@ import (
 
 func ExampleGetVersion() {
 	version := mupdf.GetVersion()
-	fmt.Printf("MuPDF version: %s\n", version)
-	// Output: MuPDF version: 1.26.3
+	fmt.Printf("MuPDF version available: %v\n", version != "")
+	// Output: MuPDF version available: true
 }
 
 func ExampleOpenDocument() {

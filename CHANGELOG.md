@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-04-28
+
+### 🐛 Bug Fixes
+- **MPDF-99: `AddBookmarks` now writes nested children and sibling chains correctly.**
+  The outline iterator was misdriven: `fz_outline_iterator_insert` auto-advances
+  past the inserted item, but `insertOutlineItems` called `_next` again (skipping
+  a slot) and `_down` from the already-advanced position (silently failing to
+  descend). As a result only the first top-level sibling was persisted, and all
+  children at every level were dropped; mupdf then logged `warning: repaired
+  broken tree structure in outline` when reading the PDF back. Fix: after
+  inserting an item with children, `_prev` back onto the item before `_down`;
+  after `_up` from children, skip the redundant `_next` (since `_insert`'s
+  auto-advance already positioned us for the next sibling). Regression tests
+  added for nested children round-trip, multiple top-level siblings, and
+  alphabetical outline extraction.
+
 ## [1.4.7] - 2025-11-20
 
 ### 🐛 Bug Fixes
