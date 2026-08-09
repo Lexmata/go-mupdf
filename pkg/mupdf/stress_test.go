@@ -1,29 +1,26 @@
 package mupdf
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-// Ultimate test to push for maximum coverage by running all functions extensively
+// Smoke tests that exercise the full API surface with real assertions.
 
 func TestUltimateCoverageBooster(t *testing.T) {
-	// Create multiple contexts simultaneously to test different creation paths
-	contexts := make([]*Context, 200)
-	for i := 0; i < 200; i++ {
+	// Several contexts alive simultaneously must all be creatable.
+	contexts := make([]*Context, 5)
+	for i := range contexts {
 		ctx, err := NewContext()
 		if err != nil {
-			t.Logf("Context creation %d failed: %v", i, err)
-		} else {
-			contexts[i] = ctx
+			t.Fatalf("Context creation %d failed: %v", i, err)
 		}
+		contexts[i] = ctx
 	}
 
-	// Close all contexts
-	for i, ctx := range contexts {
-		if ctx != nil {
-			ctx.Drop()
-			t.Logf("Closed context %d", i)
-		}
+	for _, ctx := range contexts {
+		ctx.Drop()
 	}
 }
 
@@ -34,87 +31,82 @@ func TestExtensiveDocumentOperations(t *testing.T) {
 	}
 	defer ctx.Drop()
 
-	// Create multiple test PDFs
-	pdfs := make([]string, 10)
-	for i := 0; i < 10; i++ {
+	pdfs := make([]string, 3)
+	for i := range pdfs {
 		pdfs[i] = createTestPDF(t)
 	}
 
-	// Perform extensive operations on each PDF
 	for _, pdfPath := range pdfs {
-		for attempt := 0; attempt < 20; attempt++ {
-			// Open document
+		for attempt := 0; attempt < 2; attempt++ {
 			doc, err := OpenDocument(ctx, pdfPath)
 			if err != nil {
-				t.Logf("Failed to open document: %v", err)
-				continue
+				t.Fatalf("Failed to open document %s: %v", pdfPath, err)
 			}
 
-			// Perform all possible operations
 			count := doc.CountPages()
-			t.Logf("Document pages: %d", count)
+			if count == 0 {
+				t.Fatalf("Expected at least one page in %s", pdfPath)
+			}
 
-			// Try AsPDFDocument
 			pdfDoc, err := doc.AsPDFDocument()
 			if err != nil {
-				t.Logf("AsPDFDocument failed: %v", err)
-			} else {
-				pdfCount := pdfDoc.CountPages()
-				t.Logf("PDF document pages: %d", pdfCount)
-
-				if pdfCount > 0 {
-					page, err := pdfDoc.LoadPage(0)
-					if err != nil {
-						t.Logf("PDF LoadPage failed: %v", err)
-					} else {
-						bounds := page.Bound()
-						t.Logf("PDF page bounds: %+v", bounds)
-						page.Close()
-					}
-				}
+				t.Fatalf("AsPDFDocument failed: %v", err)
+			}
+			if pdfCount := pdfDoc.CountPages(); pdfCount != count {
+				t.Errorf("AsPDFDocument page count = %d, want %d", pdfCount, count)
 			}
 
-			// Try direct PDF opening
+			pdfPage, err := pdfDoc.LoadPage(0)
+			if err != nil {
+				t.Fatalf("PDF LoadPage failed: %v", err)
+			}
+			pdfBounds1 := pdfPage.Bound()
+			pdfBounds2 := pdfPage.Bound()
+			if pdfBounds1 != pdfBounds2 {
+				t.Errorf("Inconsistent PDF page bounds: %+v vs %+v", pdfBounds1, pdfBounds2)
+			}
+			pdfPage.Close()
+
 			pdfDoc2, err := OpenPDFDocument(ctx, pdfPath)
 			if err != nil {
-				t.Logf("OpenPDFDocument failed: %v", err)
-			} else {
-				count2 := pdfDoc2.CountPages()
-				t.Logf("Direct PDF count: %d", count2)
+				t.Fatalf("OpenPDFDocument failed: %v", err)
+			}
+			if count2 := pdfDoc2.CountPages(); count2 != count {
+				t.Errorf("OpenPDFDocument page count = %d, want %d", count2, count)
 			}
 
-			if count > 0 {
-				page, err := doc.LoadPage(0)
-				if err != nil {
-					t.Logf("LoadPage failed: %v", err)
-				} else {
-					// Test bounds multiple times
-					bounds1 := page.Bound()
-					bounds2 := page.Bound()
-					t.Logf("Bounds: %+v, %+v", bounds1, bounds2)
-
-					// Test text extraction multiple times
-					text1, err := page.ExtractText()
-					if err != nil {
-						t.Logf("ExtractText failed: %v", err)
-					} else {
-						content1 := text1.String()
-						content2 := text1.String()
-						t.Logf("Text lengths: %d, %d", len(content1), len(content2))
-						text1.Close()
-					}
-
-					text2, err := page.ExtractText()
-					if err == nil {
-						content := text2.String()
-						t.Logf("Second text extraction: %d chars", len(content))
-						text2.Close()
-					}
-
-					page.Close()
-				}
+			page, err := doc.LoadPage(0)
+			if err != nil {
+				t.Fatalf("LoadPage failed: %v", err)
 			}
 
+			bounds1 := page.Bound()
+			bounds2 := page.Bound()
+			if bounds1 != bounds2 {
+				t.Errorf("Inconsistent bounds: %+v vs %+v", bounds1, bounds2)
+			}
+
+			text1, err := page.ExtractText()
+			if err != nil {
+				t.Fatalf("ExtractText failed: %v", err)
+			}
+			content1 := text1.String()
+			content2 := text1.String()
+			if content1 != content2 {
+				t.Errorf("Inconsistent String results: %d vs %d chars", len(content1), len(content2))
+			}
+			text1.Close()
+
+			text2, err := page.ExtractText()
+			if err != nil {
+				t.Fatalf("Second ExtractText failed: %v", err)
+			}
+			if got := text2.String(); got != content1 {
+				t.Errorf("Second extraction differs: %d vs %d chars", len(got), len(content1))
+			}
+			text2.Close()
+
+			page.Close()
 			doc.Close()
 		}
 	}
@@ -127,37 +119,45 @@ func TestExtensivePDFWriterOperations(t *testing.T) {
 	}
 	defer ctx.Drop()
 
-	// Create multiple writers and perform extensive operations
-	for writerNum := 0; writerNum < 50; writerNum++ {
+	const pagesPerMethod = 2
+
+	for writerNum := 0; writerNum < 2; writerNum++ {
 		writer, err := NewPDFWriter(ctx)
 		if err != nil {
-			t.Logf("Writer %d creation failed: %v", writerNum, err)
-			continue
+			t.Fatalf("Writer %d creation failed: %v", writerNum, err)
 		}
 
-		// Test all page addition methods extensively
-		methods := []func(float64, float64) (*PDFPage, error){
-			writer.AddPage,
-			writer.SimpleAddPage,
-			writer.ImprovedAddPage,
-			writer.FixedAddPage,
+		// Every page-addition variant must insert its pages.
+		methods := []struct {
+			name string
+			add  func(float64, float64) (*PDFPage, error)
+		}{
+			{"AddPage", writer.AddPage},
+			{"SimpleAddPage", writer.SimpleAddPage},
+			{"ImprovedAddPage", writer.ImprovedAddPage},
+			{"FixedAddPage", writer.FixedAddPage},
 		}
 
-		for methodIdx, method := range methods {
-			for pageNum := 0; pageNum < 10; pageNum++ {
+		added := 0
+		for _, method := range methods {
+			for pageNum := 0; pageNum < pagesPerMethod; pageNum++ {
 				w := float64(100 + pageNum*50)
 				h := float64(200 + pageNum*30)
 
-				page, err := method(w, h)
+				page, err := method.add(w, h)
 				if err != nil {
-					t.Logf("Writer %d method %d page %d failed: %v", writerNum, methodIdx, pageNum, err)
-				} else {
-					page.Close()
+					t.Fatalf("Writer %d %s page %d failed: %v", writerNum, method.name, pageNum, err)
 				}
+				page.Close()
+				added++
 			}
 		}
 
-		// Test NewPDFObject with many values
+		if got := writer.DebugCountPages(); got != added {
+			t.Errorf("Writer %d page count = %d, want %d", writerNum, got, added)
+		}
+
+		// All supported value types must produce PDF objects.
 		values := []interface{}{
 			nil, true, false, 0, 1, -1, 42, -42,
 			0.0, 1.0, -1.0, 3.14, -3.14,
@@ -167,10 +167,10 @@ func TestExtensivePDFWriterOperations(t *testing.T) {
 		for _, value := range values {
 			obj, err := writer.NewPDFObject(value)
 			if err != nil {
-				t.Logf("Object creation failed for %v: %v", value, err)
-			} else {
-				obj.Drop()
+				t.Errorf("Object creation failed for %v (%T): %v", value, value, err)
+				continue
 			}
+			obj.Drop()
 		}
 
 		writer.Close()
@@ -178,31 +178,29 @@ func TestExtensivePDFWriterOperations(t *testing.T) {
 }
 
 func TestHelperFunctionsExtensive(t *testing.T) {
-	// Test helper functions extensively to hit all code paths
-
-	// Test createTestPDF many times
-	for i := 0; i < 100; i++ {
+	// Test createTestPDF repeatedly.
+	for i := 0; i < 3; i++ {
 		pdf := createTestPDF(t)
 		if pdf == "" {
 			t.Errorf("createTestPDF %d failed", i)
 		}
 	}
 
-	// Test testDataDir many times
-	for i := 0; i < 100; i++ {
+	// Test testDataDir repeatedly.
+	for i := 0; i < 3; i++ {
 		dir := testDataDir(t)
 		if dir == "" {
 			t.Errorf("testDataDir %d failed", i)
 		}
 	}
 
-	// Test requireMuPDF many times
-	for i := 0; i < 100; i++ {
+	// Test requireMuPDF repeatedly.
+	for i := 0; i < 3; i++ {
 		requireMuPDF(t)
 	}
 
-	// Test skip functions
-	for i := 0; i < 50; i++ {
+	// Test skip functions.
+	for i := 0; i < 2; i++ {
 		skipIfShort(t)
 		skipIfCIorShort(t)
 	}
@@ -215,145 +213,123 @@ func TestErrorConditionsExtensive(t *testing.T) {
 	}
 	defer ctx.Drop()
 
-	// Test various error conditions extensively
+	// A real file whose contents are not a PDF.
+	notPDF := filepath.Join(t.TempDir(), "not-a-pdf.pdf")
+	if err := os.WriteFile(notPDF, []byte("this is not a valid PDF file"), 0o644); err != nil {
+		t.Fatalf("Failed to write invalid file: %v", err)
+	}
+
 	invalidFiles := []string{
 		"",
 		"nonexistent.pdf",
 		"/invalid/path.pdf",
-		"README.md", // Try to open non-PDF file
+		notPDF, // exists but is not a PDF
 	}
 
 	for _, file := range invalidFiles {
-		for attempt := 0; attempt < 10; attempt++ {
-			_, err := OpenDocument(ctx, file)
-			if err == nil {
-				t.Logf("Unexpected success opening %s", file)
-			}
+		if _, err := OpenDocument(ctx, file); err == nil {
+			t.Errorf("OpenDocument(%q): expected error, got nil", file)
+		}
 
-			_, err = OpenPDFDocument(ctx, file)
-			if err == nil {
-				t.Logf("Unexpected success opening PDF %s", file)
-			}
+		if _, err := OpenPDFDocument(ctx, file); err == nil {
+			t.Errorf("OpenPDFDocument(%q): expected error, got nil", file)
 		}
 	}
 }
 
 func TestAllCombinationsMaximum(t *testing.T) {
-	// Test all function combinations to maximize coverage
-
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
 	}
 	defer ctx.Drop()
 
-	// Create a valid PDF for testing
 	pdfPath := createTestPDF(t)
 
-	// Test every combination of operations
-	for iteration := 0; iteration < 50; iteration++ {
-		// Document operations
+	for iteration := 0; iteration < 2; iteration++ {
+		// Document operations.
 		doc, err := OpenDocument(ctx, pdfPath)
-		if err == nil {
-			// Multiple count calls
-			count1 := doc.CountPages()
-			count2 := doc.CountPages()
-			count3 := doc.CountPages()
-			t.Logf("Iteration %d counts: %d, %d, %d", iteration, count1, count2, count3)
-
-			// AsPDFDocument operations
-			pdfDoc, err := doc.AsPDFDocument()
-			if err == nil {
-				pdfCount1 := pdfDoc.CountPages()
-				pdfCount2 := pdfDoc.CountPages()
-				t.Logf("PDF counts: %d, %d", pdfCount1, pdfCount2)
-
-				if pdfCount1 > 0 {
-					page, err := pdfDoc.LoadPage(0)
-					if err == nil {
-						bounds1 := page.Bound()
-						bounds2 := page.Bound()
-						bounds3 := page.Bound()
-						t.Logf("PDF bounds: %+v, %+v, %+v", bounds1, bounds2, bounds3)
-						page.Close()
-					}
-				}
-			}
-
-			// Regular page operations
-			if count1 > 0 {
-				page, err := doc.LoadPage(0)
-				if err == nil {
-					// Multiple bound calls
-					bounds1 := page.Bound()
-					bounds2 := page.Bound()
-					bounds3 := page.Bound()
-					t.Logf("Regular bounds: %+v, %+v, %+v", bounds1, bounds2, bounds3)
-
-					// Multiple text extractions
-					text1, err := page.ExtractText()
-					if err == nil {
-						str1 := text1.String()
-						str2 := text1.String()
-						str3 := text1.String()
-						t.Logf("Text lengths: %d, %d, %d", len(str1), len(str2), len(str3))
-						text1.Close()
-					}
-
-					text2, err := page.ExtractText()
-					if err == nil {
-						str := text2.String()
-						t.Logf("Second text: %d chars", len(str))
-						text2.Close()
-					}
-
-					page.Close()
-				}
-			}
-
-			doc.Close()
+		if err != nil {
+			t.Fatalf("Iteration %d: OpenDocument failed: %v", iteration, err)
 		}
 
-		// Writer operations
+		count1 := doc.CountPages()
+		count2 := doc.CountPages()
+		if count1 != count2 {
+			t.Errorf("Iteration %d: inconsistent counts: %d vs %d", iteration, count1, count2)
+		}
+		if count1 == 0 {
+			t.Fatalf("Iteration %d: expected at least one page", iteration)
+		}
+
+		pdfDoc, err := doc.AsPDFDocument()
+		if err != nil {
+			t.Fatalf("Iteration %d: AsPDFDocument failed: %v", iteration, err)
+		}
+		if pdfCount := pdfDoc.CountPages(); pdfCount != count1 {
+			t.Errorf("Iteration %d: PDF count = %d, want %d", iteration, pdfCount, count1)
+		}
+
+		pdfPage, err := pdfDoc.LoadPage(0)
+		if err != nil {
+			t.Fatalf("Iteration %d: PDF LoadPage failed: %v", iteration, err)
+		}
+		if b1, b2 := pdfPage.Bound(), pdfPage.Bound(); b1 != b2 {
+			t.Errorf("Iteration %d: inconsistent PDF bounds: %+v vs %+v", iteration, b1, b2)
+		}
+		pdfPage.Close()
+
+		page, err := doc.LoadPage(0)
+		if err != nil {
+			t.Fatalf("Iteration %d: LoadPage failed: %v", iteration, err)
+		}
+		if b1, b2 := page.Bound(), page.Bound(); b1 != b2 {
+			t.Errorf("Iteration %d: inconsistent bounds: %+v vs %+v", iteration, b1, b2)
+		}
+
+		text, err := page.ExtractText()
+		if err != nil {
+			t.Fatalf("Iteration %d: ExtractText failed: %v", iteration, err)
+		}
+		if s1, s2 := text.String(), text.String(); s1 != s2 {
+			t.Errorf("Iteration %d: inconsistent text: %d vs %d chars", iteration, len(s1), len(s2))
+		}
+		text.Close()
+		page.Close()
+		doc.Close()
+
+		// Writer operations.
 		writer, err := NewPDFWriter(ctx)
-		if err == nil {
-			// Test all methods with various parameters
-			sizes := [][]float64{
-				{100, 200}, {200, 300}, {300, 400}, {612, 792}, {595, 842},
-			}
-
-			for _, size := range sizes {
-				page1, err := writer.AddPage(size[0], size[1])
-				if err == nil {
-					page1.Close()
-				}
-
-				page2, err := writer.SimpleAddPage(size[0], size[1])
-				if err == nil {
-					page2.Close()
-				}
-
-				page3, err := writer.ImprovedAddPage(size[0], size[1])
-				if err == nil {
-					page3.Close()
-				}
-
-				page4, err := writer.FixedAddPage(size[0], size[1])
-				if err == nil {
-					page4.Close()
-				}
-			}
-
-			// Test objects
-			objects := []interface{}{nil, true, false, iteration, float64(iteration), "test"}
-			for _, obj := range objects {
-				pdfObj, err := writer.NewPDFObject(obj)
-				if err == nil {
-					pdfObj.Drop()
-				}
-			}
-
-			writer.Close()
+		if err != nil {
+			t.Fatalf("Iteration %d: NewPDFWriter failed: %v", iteration, err)
 		}
+
+		sizes := [][]float64{
+			{100, 200}, {612, 792}, {595, 842},
+		}
+
+		for _, size := range sizes {
+			for _, add := range []func(float64, float64) (*PDFPage, error){
+				writer.AddPage, writer.SimpleAddPage, writer.ImprovedAddPage, writer.FixedAddPage,
+			} {
+				page, err := add(size[0], size[1])
+				if err != nil {
+					t.Fatalf("Iteration %d: adding %vx%v page failed: %v", iteration, size[0], size[1], err)
+				}
+				page.Close()
+			}
+		}
+
+		objects := []interface{}{nil, true, false, iteration, float64(iteration), "test"}
+		for _, obj := range objects {
+			pdfObj, err := writer.NewPDFObject(obj)
+			if err != nil {
+				t.Errorf("Iteration %d: NewPDFObject(%v) failed: %v", iteration, obj, err)
+				continue
+			}
+			pdfObj.Drop()
+		}
+
+		writer.Close()
 	}
 }

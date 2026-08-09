@@ -8,10 +8,10 @@ This document describes the Bitbucket Pipelines CI/CD setup for the Go MuPDF Wra
 
 ### Default Pipeline
 Runs on all branches except `main` and for pull requests:
-- Builds MuPDF native library
-- Runs Go tests with race detection
-- Generates coverage reports
-- Caches build artifacts for faster subsequent runs
+- Builds MuPDF once in a shared `build-mupdf` step that publishes a `mupdf-artifacts/` artifact
+- Runs lint and tests in parallel steps that install the pre-built artifact instead of rebuilding
+- Runs Go tests with race detection and generates coverage reports
+- Caches the MuPDF artifact for faster subsequent runs
 
 ### Main Branch Pipeline
 Enhanced pipeline for the main branch:
@@ -44,14 +44,12 @@ Focused on validation:
 ### 2. Comprehensive Testing
 - **Race Detection**: All tests run with `-race` flag
 - **Coverage**: Detailed coverage reports with HTML output
-- **Categorized Tests**: Support for different test categories (unit, integration, memory, stress)
 - **Benchmarks**: Performance benchmarking on main branch
 
 ### 3. Code Quality
 - **Formatting**: Enforced code formatting with `gofmt`
-- **Static Analysis**: `go vet` and optional `staticcheck`
-- **Vulnerability Scanning**: Optional `govulncheck` integration
-- **Dependency Validation**: `go mod verify` and outdated dependency checks
+- **Static Analysis**: `go vet`, `golangci-lint`, and `staticcheck`
+- **Local Extras**: `govulncheck` and `go mod verify` are available locally via `scripts/test-runner.sh` (not run by the pipeline)
 
 ### 4. Performance Optimization
 - **Parallel Builds**: Uses all available CPU cores
@@ -71,19 +69,19 @@ Main pipeline configuration with four distinct workflows:
 - Pull requests: Fast validation
 ```
 
-### scripts/ci-setup.sh
-Environment setup script that:
-- Installs system dependencies
-- Configures Go environment
-- Builds MuPDF library
-- Verifies build environment
+### Pipeline Scripts
+The pipeline itself invokes these scripts:
+- `scripts/check-mupdf-lock.sh` - Verifies `mupdf.lock` matches the MuPDF submodule pointer before the cached libraries are built (also run by the pre-commit hook)
+- `scripts/build-mupdf-artifact.sh` - Builds the shared MuPDF artifact in the `build-mupdf` step
+- `scripts/install-prebuilt-libs.sh` - Installs the pre-built artifact in consuming steps
+- `scripts/build-static-libs.sh` - Builds distribution packages in tag pipelines
+- `scripts/upload-coverage.sh` - Uploads coverage to Codecov using a pinned, checksum-verified uploader
 
-### scripts/test-runner.sh
-Comprehensive test runner with options for:
-- Coverage analysis
-- Benchmark execution
-- Code quality checks
-- Categorized test execution
+### Local Helper Scripts (not invoked by the pipeline)
+- `scripts/install.sh` - Local setup entry point (`make setup`): downloads pre-built libraries, falling back to `scripts/setup-mupdf.sh`
+- `scripts/setup-mupdf.sh` - Downloads or builds MuPDF libraries locally; the source-build fallback for `install.sh`
+- `scripts/ci-setup.sh` - Local environment setup: installs system dependencies, configures Go, builds MuPDF
+- `scripts/test-runner.sh` - Local test runner with options for coverage analysis, benchmarks, code quality checks, and categorized test execution
 
 ## Environment Requirements
 
@@ -138,8 +136,9 @@ GOARCH=amd64
 ### Generated Artifacts
 - `coverage.html`: HTML coverage report
 - `coverage.out`: Coverage data file
-- `benchmark.out`: Benchmark results (main branch)
-- `releases/`: Release binaries (tags only)
+- `pr-coverage.out`: Coverage data for pull request runs
+- `release-coverage.out`: Coverage data for tag (release) runs
+- `dist/*`: Distribution packages and checksums (tags only)
 
 ### Artifact Retention
 - Coverage reports: Available for download
@@ -154,8 +153,8 @@ GOARCH=amd64
 - **Benefits**: Faster dependency resolution
 
 ### MuPDF Build Cache
-- **Key**: MuPDF source hash
-- **Path**: `third_party/mupdf/build/`
+- **Key**: `.gitmodules` + `mupdf.lock` pin file
+- **Path**: `mupdf-artifacts`
 - **Benefits**: Avoids expensive native compilation
 
 ## Performance Metrics

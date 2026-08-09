@@ -18,6 +18,24 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_NAME="go-mupdf-test"
 IMAGE_TAG="latest"
 
+# Shared options (set by main from command-line flags)
+VERBOSE=0
+REBUILD=0
+NO_CACHE=0
+SHORT=0
+
+# Source mounts: overlay only the Go sources onto the image's /workspace so
+# the MuPDF libraries built into the image (third_party/...) stay visible.
+# Mounting the whole repo over /workspace would shadow them.
+DOCKER_MOUNTS=(
+    -v "${PROJECT_ROOT}/pkg:/workspace/pkg"
+    -v "${PROJECT_ROOT}/go.mod:/workspace/go.mod:ro"
+    -v "${PROJECT_ROOT}/go.sum:/workspace/go.sum:ro"
+)
+
+# Host directory that receives files written by containers (e.g. coverage)
+ARTIFACTS_DIR="${PROJECT_ROOT}/.docker-artifacts"
+
 # Function to print colored messages
 print_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -41,20 +59,25 @@ Commands:
     test        Run tests in Docker (builds image if needed)
     shell       Open a shell in the Docker container
     clean       Remove the Docker test image
-    coverage    Run tests and generate coverage report
+    coverage    Run tests and generate coverage report (written to .docker-artifacts/)
     quick       Run tests without rebuilding (uses cached image)
     help        Show this help message
 
-Options:
-    -v, --verbose    Show verbose output
-    -r, --rebuild    Force rebuild of Docker image
-    -s, --short      Run tests in short mode
+Options (may be placed before or after the command):
+    -v, --verbose    Verbose output (go test -v; docker build --progress=plain)
+    -r, --rebuild    Force rebuild of the Docker image before running the command
+    -s, --short      Run tests in short mode (go test -short)
     --no-cache       Build Docker image without cache
+
+Arguments after '--' are passed through to go test (test, quick, and
+coverage commands), e.g.: $0 test -- -run TestDocument
 
 Examples:
     $0 build                    # Build the test image
-    $0 test                     # Build and run all tests
+    $0 build --no-cache         # Build without Docker cache
+    $0 test                     # Build (if needed) and run all tests
     $0 test --short             # Run quick tests only
+    $0 test --rebuild           # Rebuild image, then run tests
     $0 quick                    # Run tests without rebuilding
     $0 coverage                 # Generate coverage report
     $0 shell                    # Open interactive shell
@@ -64,22 +87,35 @@ EOF
 
 # Function to build Docker image
 build_image() {
-    local no_cache=""
-    if [ "$1" = "--no-cache" ]; then
-        no_cache="--no-cache"
+    local build_flags=()
+    if [ "$NO_CACHE" = "1" ]; then
+        build_flags+=(--no-cache)
+    fi
+    if [ "$VERBOSE" = "1" ]; then
+        build_flags+=(--progress=plain)
     fi
 
     print_info "Building Docker test image..."
     cd "$PROJECT_ROOT"
 
-    docker build $no_cache -f Dockerfile.test -t "${IMAGE_NAME}:${IMAGE_TAG}" .
-
-    if [ $? -eq 0 ]; then
+    if docker build "${build_flags[@]}" -f Dockerfile.test -t "${IMAGE_NAME}:${IMAGE_TAG}" .; then
         print_info "Docker image built successfully: ${IMAGE_NAME}:${IMAGE_TAG}"
     else
         print_error "Failed to build Docker image"
         exit 1
     fi
+}
+
+# Function to assemble go test flags from the shared options
+go_test_flags() {
+    local flags="-race"
+    if [ "$VERBOSE" = "1" ]; then
+        flags="$flags -v"
+    fi
+    if [ "$SHORT" = "1" ]; then
+        flags="$flags -short"
+    fi
+    echo "$flags"
 }
 
 # Function to check if image exists
@@ -89,21 +125,9 @@ image_exists() {
 
 # Function to run tests
 run_tests() {
-    local test_args=""
-    local short_mode=""
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -s|--short)
-                short_mode="-short"
-                shift
-                ;;
-            *)
-                test_args="$test_args $1"
-                shift
-                ;;
-        esac
-    done
+    # Keep the pass-through arguments as an array so quoted values such
+    # as -run 'TestA|TestB' survive as single arguments.
+    local test_args=("$@")
 
     if ! image_exists; then
         print_warn "Docker image not found. Building..."
@@ -114,14 +138,16 @@ run_tests() {
     cd "$PROJECT_ROOT"
 
     docker run --rm \
-        -v "$(pwd):/workspace" \
+        "${DOCKER_MOUNTS[@]}" \
         -w /workspace \
         "${IMAGE_NAME}:${IMAGE_TAG}" \
-        go test -v -race $short_mode $test_args ./pkg/mupdf/
+        go test $(go_test_flags) "${test_args[@]}" ./pkg/mupdf/
 }
 
 # Function to run tests without rebuilding
 quick_test() {
+    local test_args=("$@")
+
     if ! image_exists; then
         print_error "Docker image not found. Run '$0 build' first or use '$0 test'"
         exit 1
@@ -131,14 +157,16 @@ quick_test() {
     cd "$PROJECT_ROOT"
 
     docker run --rm \
-        -v "$(pwd):/workspace" \
+        "${DOCKER_MOUNTS[@]}" \
         -w /workspace \
         "${IMAGE_NAME}:${IMAGE_TAG}" \
-        go test -v -race ./pkg/mupdf/
+        go test $(go_test_flags) "${test_args[@]}" ./pkg/mupdf/
 }
 
 # Function to generate coverage report
 run_coverage() {
+    local test_args=("$@")
+
     if ! image_exists; then
         print_warn "Docker image not found. Building..."
         build_image
@@ -146,16 +174,26 @@ run_coverage() {
 
     print_info "Running tests with coverage..."
     cd "$PROJECT_ROOT"
+    mkdir -p "$ARTIFACTS_DIR"
 
     docker run --rm \
-        -v "$(pwd):/workspace" \
+        "${DOCKER_MOUNTS[@]}" \
+        -v "${ARTIFACTS_DIR}:/artifacts" \
         -w /workspace \
         "${IMAGE_NAME}:${IMAGE_TAG}" \
-        bash -c "go test -v -race -coverprofile=coverage.out ./pkg/mupdf/ && go tool cover -func=coverage.out | tail -1"
+        go test $(go_test_flags) -coverprofile=/artifacts/coverage.out "${test_args[@]}" ./pkg/mupdf/
 
-    if [ -f "coverage.out" ]; then
-        print_info "Coverage report generated: coverage.out"
-        print_info "To view HTML report, run: go tool cover -html=coverage.out"
+    if [ -f "${ARTIFACTS_DIR}/coverage.out" ]; then
+        docker run --rm \
+            -v "${ARTIFACTS_DIR}:/artifacts" \
+            -w /workspace \
+            "${IMAGE_NAME}:${IMAGE_TAG}" \
+            go tool cover -func=/artifacts/coverage.out | tail -1
+    fi
+
+    if [ -f "${ARTIFACTS_DIR}/coverage.out" ]; then
+        print_info "Coverage report generated: .docker-artifacts/coverage.out"
+        print_info "To view HTML report, run: go tool cover -html=.docker-artifacts/coverage.out"
     fi
 }
 
@@ -170,7 +208,7 @@ run_shell() {
     cd "$PROJECT_ROOT"
 
     docker run --rm -it \
-        -v "$(pwd):/workspace" \
+        "${DOCKER_MOUNTS[@]}" \
         -w /workspace \
         "${IMAGE_NAME}:${IMAGE_TAG}" \
         bash
@@ -190,38 +228,74 @@ main() {
         exit 0
     fi
 
-    local command="$1"
-    shift
+    # Parse shared options first (they may appear before or after the command)
+    local positional=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -v|--verbose)
+                VERBOSE=1
+                ;;
+            -r|--rebuild)
+                REBUILD=1
+                ;;
+            --no-cache)
+                NO_CACHE=1
+                ;;
+            -s|--short)
+                SHORT=1
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            --)
+                # Everything after -- is passed through untouched (e.g. go test flags)
+                shift
+                positional+=("$@")
+                break
+                ;;
+            -*)
+                print_error "Unknown option: $1"
+                echo ""
+                usage
+                exit 1
+                ;;
+            *)
+                positional+=("$1")
+                ;;
+        esac
+        shift
+    done
+
+    if [ ${#positional[@]} -eq 0 ]; then
+        usage
+        exit 0
+    fi
+
+    local command="${positional[0]}"
+    local rest=("${positional[@]:1}")
+
+    # --rebuild forces an image build before commands that use the image
+    case "$command" in
+        test|quick|coverage|shell)
+            if [ "$REBUILD" = "1" ]; then
+                build_image
+            fi
+            ;;
+    esac
 
     case "$command" in
         build)
-            build_image "$@"
+            build_image
             ;;
         test)
-            local rebuild=""
-            while [ $# -gt 0 ]; do
-                case "$1" in
-                    -r|--rebuild)
-                        rebuild="yes"
-                        shift
-                        ;;
-                    *)
-                        break
-                        ;;
-                esac
-            done
-
-            if [ "$rebuild" = "yes" ]; then
-                build_image
-            fi
-
-            run_tests "$@"
+            run_tests "${rest[@]}"
             ;;
         quick)
-            quick_test
+            quick_test "${rest[@]}"
             ;;
         coverage)
-            run_coverage
+            run_coverage "${rest[@]}"
             ;;
         shell)
             run_shell
@@ -229,7 +303,7 @@ main() {
         clean)
             clean_image
             ;;
-        help|--help|-h)
+        help)
             usage
             ;;
         *)

@@ -47,8 +47,8 @@ Pipeline Start
    - Verifies installation
 
 3. **Pipeline Cache**
-   - Cache key: `third_party/mupdf/.git/HEAD`
-   - Updates when MuPDF submodule changes
+   - Cache key: `.gitmodules` + `mupdf.lock` pin file
+   - Updates when the pinned MuPDF version changes
    - Persists across pipeline runs
 
 4. **Artifact Sharing**
@@ -142,20 +142,21 @@ The install script:
 
 ### 3. Cache Strategy
 
-The cache is keyed to the MuPDF submodule state:
+The cache is keyed to the pinned MuPDF version:
 
 ```yaml
 caches:
   mupdf-libs:
     key:
       files:
-        - third_party/mupdf/.git/HEAD
+        - .gitmodules
+        - mupdf.lock
     path: mupdf-artifacts
 ```
 
 **Cache invalidation**:
-- Automatically updates when MuPDF version changes
-- Rebuilds when submodule is updated
+- Automatically updates when the pinned MuPDF version changes
+- Rebuilds when `.gitmodules` or `mupdf.lock` is updated
 - Persists across pipeline runs on same MuPDF version
 
 ### 4. Artifact Flow
@@ -248,8 +249,8 @@ ARTIFACT_DIR=/path/to/artifacts ./scripts/install-prebuilt-libs.sh
 
 **Solutions**:
 ```bash
-# Check cache key
-cat third_party/mupdf/.git/HEAD
+# Check cache key inputs
+cat .gitmodules mupdf.lock
 
 # Verify submodule is initialized
 git submodule status
@@ -388,13 +389,13 @@ du -h mupdf-artifacts/mupdf-libs.tar.gz
 ### 1. Keep MuPDF Version Stable
 
 ```bash
-# Update submodule deliberately
+# Update submodule deliberately (and update the mupdf.lock pin to match)
 cd third_party/mupdf
 git fetch --all
-git checkout v1.23.9
+git checkout 1.26.3
 cd ../..
-git add third_party/mupdf
-git commit -m "chore: update MuPDF to v1.23.9"
+git add third_party/mupdf mupdf.lock
+git commit -m "chore: update MuPDF to 1.26.3"
 ```
 
 ### 2. Monitor Cache Size
@@ -495,5 +496,5 @@ For issues or questions:
 
 **Last Updated**: 2025
 **Pipeline Version**: v2.0 (Optimized)
-**MuPDF Version**: 1.23.x
+**MuPDF Version**: 1.26.3
 

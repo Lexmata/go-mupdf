@@ -72,10 +72,13 @@ func GetVersion() string {
 // Context represents a MuPDF execution context and manages the library's
 // internal state, memory allocation, and error handling.
 //
-// A Context is required for all MuPDF operations and should be created
-// once per thread or goroutine that needs to use MuPDF functionality.
-// Contexts are thread-safe and can be used concurrently, but for optimal
-// performance, create separate contexts for different goroutines.
+// A Context is required for all MuPDF operations. Contexts are created in
+// MuPDF's single-threaded mode (no locking primitives), so a Context must
+// NOT be shared across goroutines. The supported concurrency pattern is
+// one Context per goroutine: each goroutine that needs MuPDF functionality
+// creates its own Context via NewContext. Documents, Pages, and other
+// objects created from a Context are bound to it and share the same
+// restriction.
 //
 // The Context manages:
 //   - Memory allocation and cleanup

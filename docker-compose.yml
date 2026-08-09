@@ -4,11 +4,14 @@ services:
   test:
     build:
       context: .
-      dockerfile: Dockerfile
+      # Use the same Dockerfile as the make docker-* targets so there is a
+      # single Docker test path
+      dockerfile: Dockerfile.test
     image: go-mupdf-test:latest
     volumes:
-      # Mount source code for development (optional)
-      - .:/workspace
+      # Note: the source tree is deliberately NOT mounted here, so tests run
+      # against the image exactly as it was built (including the MuPDF
+      # libraries compiled during the image build).
       # Cache Go modules
       - go-modules:/go/pkg/mod
     environment:

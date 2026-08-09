@@ -8,6 +8,8 @@ echo "🔍 Running pre-push checks..."
 
 # Check if we're pushing tags (refs/tags/*) instead of branches or deleting refs
 # Read stdin to get what's being pushed
+PUSH_LOCAL_SHA=""
+PUSH_REMOTE_SHA=""
 while read local_ref local_sha remote_ref remote_sha; do
     # Check if deleting (local_sha is all zeros)
     if [[ "$local_sha" =~ ^0+$ ]]; then
@@ -20,12 +22,16 @@ while read local_ref local_sha remote_ref remote_sha; do
         export SKIP_MERGE_CHECK=true
         break
     fi
+    # Remember the range actually being pushed so the test gate below
+    # can diff it rather than guessing from the working tree.
+    PUSH_LOCAL_SHA="$local_sha"
+    PUSH_REMOTE_SHA="$remote_sha"
 done
 
 # Get the path to the pre-commit hook
 PRE_COMMIT_HOOK="$(git rev-parse --git-path hooks/pre-commit)"
 
-# Run pre-commit checks
+# Run pre-commit checks (branch protection, formatting, vet, lint)
 if [ -f "$PRE_COMMIT_HOOK" ]; then
     if ! "$PRE_COMMIT_HOOK"; then
         echo ""
@@ -37,6 +43,55 @@ if [ -f "$PRE_COMMIT_HOOK" ]; then
     fi
 else
     echo -e "\033[1;33m⚠️  Pre-commit hook not found, skipping checks\033[0m"
+fi
+
+# Run tests on the pushed range.
+# The pre-commit hook only tests packages with STAGED files, and the index is
+# empty at push time, so tests must be run here against the commits being pushed.
+echo ""
+echo "🧪 Checking pushed range for Go changes..."
+#
+# Determine the pushed range from the refs git passed on stdin. If the
+# range cannot be established (new branch, shallow clone, or no stdin),
+# the tests are run unconditionally rather than skipped: failing open
+# here would let untested code through, which is exactly what this gate
+# exists to prevent.
+FORCE_TESTS=0
+if [ -n "$PUSH_LOCAL_SHA" ] && [ -n "$PUSH_REMOTE_SHA" ] && ! [[ "$PUSH_REMOTE_SHA" =~ ^0+$ ]] \
+   && git cat-file -e "$PUSH_REMOTE_SHA^{commit}" 2>/dev/null; then
+    CHANGED_FILES=$(git diff --name-only "$PUSH_REMOTE_SHA" "$PUSH_LOCAL_SHA" 2>/dev/null) || FORCE_TESTS=1
+else
+    # New branch or unknown remote state: cannot scope the diff.
+    FORCE_TESTS=1
+fi
+
+if [ "$FORCE_TESTS" -eq 1 ]; then
+    CHANGED_GO_FILES="(unable to determine pushed range - testing everything)"
+    echo "   Pushed range could not be determined; running tests unconditionally"
+else
+    CHANGED_GO_FILES=$(echo "$CHANGED_FILES" | grep '\.go$' | grep -v '^third_party/' | grep -v '^examples/' || true)
+fi
+
+if [ -z "$CHANGED_GO_FILES" ]; then
+    echo -e "\033[1;33m⚠️  No Go files changed in pushed range (excluding examples), skipping tests\033[0m"
+else
+    echo "   Go files changed: $(echo "$CHANGED_GO_FILES" | wc -l) file(s)"
+    echo "   Running go test -short ./pkg/mupdf/ ..."
+    TEST_OUTPUT=$(go test -short ./pkg/mupdf/ 2>&1)
+    TEST_EXIT_CODE=$?
+    TEST_OUTPUT=$(echo "$TEST_OUTPUT" | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
+
+    if [ $TEST_EXIT_CODE -eq 0 ]; then
+        echo -e "\033[0;32m✅ Tests passed on pushed changes\033[0m"
+    else
+        echo ""
+        echo -e "\033[0;31m❌ Tests failed! Push blocked.\033[0m"
+        echo "$TEST_OUTPUT" | head -40
+        echo ""
+        echo "   Please fix the failing tests and try again."
+        echo "   NEVER use --no-verify to bypass hooks."
+        exit 1
+    fi
 fi
 
 echo ""

@@ -7,18 +7,21 @@ package mupdf
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
-// Define FZ_MEDIA_BOX if not available (for older MuPDF versions)
-#ifndef FZ_MEDIA_BOX
-#define FZ_MEDIA_BOX 0
-#endif
-
-// PDF document conversion
+// PDF document conversion.
+//
+// Uses fz_new_pdf_document_from_fz_document rather than the
+// pdf_document_from_fz_document down-cast: the former returns a KEPT
+// reference that the caller must drop, which is what balances the
+// pdf_drop_document call in PDFDocument.Close(). Both return NULL when
+// the document is not a PDF.
 pdf_document* go_mupdf_pdf_document_from_fz_document(fz_context *ctx, fz_document *doc, char **out_error) {
     pdf_document *pdf = NULL;
     *out_error = NULL;
 
+    fz_var(pdf);
+
     fz_try(ctx) {
-        pdf = pdf_document_from_fz_document(ctx, doc);
+        pdf = fz_new_pdf_document_from_fz_document(ctx, doc);
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
@@ -27,6 +30,20 @@ pdf_document* go_mupdf_pdf_document_from_fz_document(fz_context *ctx, fz_documen
     }
 
     return pdf;
+}
+
+// Drop a kept PDF document reference
+void go_mupdf_pdf_drop_document(fz_context *ctx, pdf_document *doc, char **out_error) {
+    *out_error = NULL;
+
+    fz_try(ctx) {
+        pdf_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        const char *error_message = fz_caught_message(ctx);
+        *out_error = (char*)malloc(strlen(error_message) + 1);
+        strcpy(*out_error, error_message);
+    }
 }
 
 // Count PDF pages
@@ -68,9 +85,24 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
     fz_rect rect = {0, 0, 0, 0};
     *out_error = NULL;
 
+    fz_var(rect);
+
+    if (!page) {
+        return rect;
+    }
+
     fz_try(ctx) {
-        // If page has an obj, try to read MediaBox directly (for manually created pages)
-        if (page && page->obj) {
+        // Use fz_bound_page as the primary path: it honours CropBox, Rotate
+        // and non-zero origins. Pages returned by pdf_load_page have a fully
+        // initialized vtable, so this is safe. We use fz_bound_page instead
+        // of pdf_bound_page for version compatibility (the pdf_bound_page API
+        // varies between MuPDF versions, but fz_bound_page is stable). Cast
+        // pdf_page to fz_page since pdf_page extends fz_page.
+        rect = fz_bound_page(ctx, (fz_page *)page);
+
+        // Defensive fallback: if bounding produced an empty rect, read the
+        // raw MediaBox directly from the page object.
+        if (rect.x0 == 0 && rect.y0 == 0 && rect.x1 == 0 && rect.y1 == 0 && page->obj) {
             pdf_obj *mediabox = pdf_dict_get(ctx, page->obj, PDF_NAME(MediaBox));
             if (mediabox && pdf_is_array(ctx, mediabox)) {
                 int len = pdf_array_len(ctx, mediabox);
@@ -82,14 +114,6 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
                     rect.y1 = pdf_to_real(ctx, pdf_array_get(ctx, mediabox, 3));
                 }
             }
-        }
-
-        // If we didn't get bounds from MediaBox, try fz_bound_page
-        if (rect.x0 == 0 && rect.y0 == 0 && rect.x1 == 0 && rect.y1 == 0) {
-            // Use fz_bound_page instead of pdf_bound_page for version compatibility
-            // pdf_bound_page API varies between MuPDF versions, but fz_bound_page
-            // is stable. Cast pdf_page to fz_page since pdf_page extends fz_page.
-            rect = fz_bound_page(ctx, (fz_page *)page);
         }
     }
     fz_catch(ctx) {
@@ -133,94 +157,47 @@ pdf_document* go_mupdf_pdf_create_document(fz_context *ctx, char **out_error) {
     return doc;
 }
 
-// Add PDF page - using the working simple approach
-pdf_page* go_mupdf_pdf_add_page(fz_context *ctx, pdf_document *doc, float width, float height, int rotate, char **out_error) {
+// Add PDF page - creates the page object, links it into the page tree with
+// pdf_insert_page, and returns a properly refcounted page handle obtained
+// via pdf_load_page. The new page's index is returned via out_page_num.
+pdf_page* go_mupdf_pdf_add_page(fz_context *ctx, pdf_document *doc, float width, float height, int rotate, int *out_page_num, char **out_error) {
     pdf_page *page = NULL;
+    pdf_obj *resources = NULL;
+    pdf_obj *page_obj = NULL;
+    fz_buffer *contents = NULL;
     *out_error = NULL;
+    *out_page_num = -1;
+
+    fz_var(page);
+    fz_var(resources);
+    fz_var(page_obj);
+    fz_var(contents);
 
     fz_try(ctx) {
-        // Get root and pages objects
-        pdf_obj *root = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Root));
-        pdf_obj *pages = pdf_dict_get(ctx, root, PDF_NAME(Pages));
-        pdf_obj *kids = pdf_dict_get(ctx, pages, PDF_NAME(Kids));
+        fz_rect mediabox;
+        mediabox.x0 = 0;
+        mediabox.y0 = 0;
+        mediabox.x1 = width;
+        mediabox.y1 = height;
 
-        // Create the page object
-        pdf_obj *page_obj = pdf_add_new_dict(ctx, doc, 5);
-        pdf_dict_put_name(ctx, page_obj, PDF_NAME(Type), "Page");
-        pdf_dict_put(ctx, page_obj, PDF_NAME(Parent), pages);
+        // Minimal resources dictionary and an empty content stream;
+        // content is expected to be added later by the caller.
+        resources = pdf_add_new_dict(ctx, doc, 1);
+        contents = fz_new_buffer(ctx, 0);
 
-        // Set media box
-        pdf_obj *mediabox = pdf_new_array(ctx, doc, 4);
-        pdf_array_push_int(ctx, mediabox, 0);
-        pdf_array_push_int(ctx, mediabox, 0);
-        pdf_array_push_int(ctx, mediabox, (int)width);
-        pdf_array_push_int(ctx, mediabox, (int)height);
-        pdf_dict_put(ctx, page_obj, PDF_NAME(MediaBox), mediabox);
+        // Create the page object and link it into the page tree
+        page_obj = pdf_add_page(ctx, doc, mediabox, rotate, resources, contents);
+        pdf_insert_page(ctx, doc, -1, page_obj);
 
-        // Set rotation if provided
-        if (rotate != 0) {
-            pdf_dict_put_int(ctx, page_obj, PDF_NAME(Rotate), rotate);
-        }
-
-        // Create resources with proper Font dictionary
-        pdf_obj *resources = pdf_add_new_dict(ctx, doc, 2);
-
-        // Add ProcSet
-        pdf_obj *procset = pdf_new_array(ctx, doc, 2);
-        pdf_array_push_name(ctx, procset, "PDF");
-        pdf_array_push_name(ctx, procset, "Text");
-        pdf_dict_put(ctx, resources, PDF_NAME(ProcSet), procset);
-
-        // Add Font dictionary with F1 -> Helvetica
-        pdf_obj *font_dict = pdf_add_new_dict(ctx, doc, 1);
-        pdf_obj *font_f1 = pdf_add_new_dict(ctx, doc, 3);
-        pdf_dict_put_name(ctx, font_f1, PDF_NAME(Type), "Font");
-        pdf_dict_put_name(ctx, font_f1, PDF_NAME(Subtype), "Type1");
-        pdf_dict_put_name(ctx, font_f1, PDF_NAME(BaseFont), "Helvetica");
-        pdf_obj *f1_name = pdf_new_name(ctx, "F1");
-        pdf_dict_put(ctx, font_dict, f1_name, font_f1);
-        pdf_drop_obj(ctx, f1_name);
-        pdf_dict_put(ctx, resources, PDF_NAME(Font), font_dict);
-
-        pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), resources);
-
-        // Create simple content stream
-        fz_buffer *contents = fz_new_buffer(ctx, 0);
-        fz_append_string(ctx, contents, "BT /F1 12 Tf 50 750 Td (Page Content) Tj ET");
-        pdf_obj *contents_obj = pdf_add_stream(ctx, doc, contents, NULL, 0);
-        pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), contents_obj);
-
-        // Add page to kids array
-        pdf_array_push(ctx, kids, page_obj);
-
-        // Update page count
-        int count = pdf_dict_get_int(ctx, pages, PDF_NAME(Count));
-        pdf_dict_put_int(ctx, pages, PDF_NAME(Count), count + 1);
-
-        // Clean up
+        // Load the freshly inserted page so we return a properly
+        // refcounted fz_page-derived handle
+        *out_page_num = pdf_count_pages(ctx, doc) - 1;
+        page = pdf_load_page(ctx, doc, *out_page_num);
+    }
+    fz_always(ctx) {
+        pdf_drop_obj(ctx, resources);
+        pdf_drop_obj(ctx, page_obj);
         fz_drop_buffer(ctx, contents);
-
-        // Create the page structure manually
-        // We initialize it with the page object so that go_mupdf_pdf_bound_page
-        // can read the MediaBox directly from the page object
-        // Note: fz_malloc_struct already zero-initializes the struct
-        page = fz_malloc_struct(ctx, pdf_page);
-        page->obj = pdf_keep_obj(ctx, page_obj);
-        page->doc = doc;
-        // Initialize other fields to safe defaults
-        page->transparency = 0;
-        page->overprint = 0;
-        page->links = NULL;
-        page->annots = NULL;
-        page->annot_tailp = &page->annots;
-        page->widgets = NULL;
-        page->widget_tailp = &page->widgets;
-        // Initialize the super (fz_page) structure
-        // Note: This is a minimal initialization. For full functionality,
-        // we would need to use fz_new_derived_page, but that's not available
-        // in the public API. The Bound() method will read from page->obj directly.
-        // fz_malloc_struct already zero-initializes, so we just set the doc field
-        page->super.doc = (fz_document *)doc;
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
@@ -332,19 +309,30 @@ pdf_obj* go_mupdf_pdf_new_string(fz_context *ctx, pdf_document *doc, const char 
 */
 import "C"
 import (
-	"fmt"
 	"runtime"
 	"unsafe"
 )
 
-// PDFDocument represents a PDF document
+// PDFDocument represents a PDF document.
+//
+// Memory Management:
+//   - Always call Close() when finished with a PDFDocument to release
+//     the kept PDF document reference obtained from AsPDFDocument
+//   - A finalizer provides automatic cleanup as a safety net
+//   - Because the reference is kept independently of the parent
+//     Document, a PDFDocument stays valid after the parent Document is
+//     closed; Close() must still be called on it
 type PDFDocument struct {
 	ctx *Context
 	doc *Document
 	pdf *C.pdf_document
 }
 
-// AsPDFDocument converts a Document to a PDFDocument if possible
+// AsPDFDocument converts a Document to a PDFDocument if possible.
+//
+// It returns an error if the document is not a PDF. The returned
+// PDFDocument holds a kept (refcounted) reference to the underlying
+// PDF document; always call Close() when finished with it.
 func (doc *Document) AsPDFDocument() (*PDFDocument, error) {
 	var cError *C.char
 	pdf := C.go_mupdf_pdf_document_from_fz_document(doc.ctx.ctx, doc.doc, &cError)
@@ -354,12 +342,29 @@ func (doc *Document) AsPDFDocument() (*PDFDocument, error) {
 		return nil, Error{message: C.GoString(cError)}
 	}
 
+	if pdf == nil {
+		return nil, Error{message: "document is not a PDF"}
+	}
+
 	result := &PDFDocument{ctx: doc.ctx, doc: doc, pdf: pdf}
 	runtime.SetFinalizer(result, func(p *PDFDocument) {
-		// No need to free pdf as it's just a cast of doc
+		p.Close()
 	})
 
 	return result, nil
+}
+
+// Close releases the kept PDF document reference obtained from
+// AsPDFDocument. It is safe to call Close multiple times.
+func (pdf *PDFDocument) Close() {
+	if pdf.pdf != nil && pdf.ctx != nil && pdf.ctx.ctx != nil {
+		var cError *C.char
+		C.go_mupdf_pdf_drop_document(pdf.ctx.ctx, pdf.pdf, &cError)
+		if cError != nil {
+			C.free(unsafe.Pointer(cError))
+		}
+		pdf.pdf = nil
+	}
 }
 
 // OpenPDFDocument opens a PDF document from a file path
@@ -369,11 +374,25 @@ func OpenPDFDocument(ctx *Context, filename string) (*PDFDocument, error) {
 		return nil, err
 	}
 
-	return doc.AsPDFDocument()
+	pdfDoc, err := doc.AsPDFDocument()
+	if err != nil {
+		doc.Close()
+		return nil, err
+	}
+
+	return pdfDoc, nil
 }
 
-// CountPages returns the number of pages in the PDF document
+// CountPages returns the number of pages in the PDF document.
+//
+// It returns 0 if the document has been closed. Note that 0 is returned
+// both for a document with no pages and for a closed or invalid one;
+// these cases are not distinguishable through this method.
 func (pdf *PDFDocument) CountPages() int {
+	if pdf.pdf == nil || pdf.ctx == nil || pdf.ctx.ctx == nil {
+		return 0
+	}
+
 	var cError *C.char
 	count := C.go_mupdf_pdf_count_pages(pdf.ctx.ctx, pdf.pdf, &cError)
 
@@ -426,14 +445,23 @@ func (pdf *PDFDocument) CountPages() int {
 //	bounds := pdfPage.Bound()
 //	// ... PDF-specific page operations
 type PDFPage struct {
-	ctx  *Context
-	doc  *PDFDocument
-	page *C.pdf_page
-	num  int
+	ctx *Context
+	doc *PDFDocument
+	// writer keeps the owning PDFWriter reachable for pages created via
+	// the AddPage family, so the writer cannot be finalized (and its
+	// document freed) while the page is still alive. It is nil for pages
+	// loaded from a PDFDocument.
+	writer *PDFWriter
+	page   *C.pdf_page
+	num    int
 }
 
 // LoadPage loads a page by number
 func (pdf *PDFDocument) LoadPage(pageNum int) (*PDFPage, error) {
+	if pdf.pdf == nil || pdf.ctx == nil || pdf.ctx.ctx == nil {
+		return nil, Error{message: "PDF document is closed or invalid"}
+	}
+
 	var cError *C.char
 	page := C.go_mupdf_pdf_load_page(pdf.ctx.ctx, pdf.pdf, C.int(pageNum), &cError)
 
@@ -459,8 +487,16 @@ func (page *PDFPage) Close() {
 	}
 }
 
-// Bound returns the page's bounding box
+// Bound returns the page's bounding box.
+//
+// The returned rectangle reflects the page's CropBox and /Rotate
+// entries where present, not the raw MediaBox. It returns the zero Rect
+// if the page has been closed or if bounds calculation fails.
 func (page *PDFPage) Bound() Rect {
+	if page.page == nil || page.ctx == nil || page.ctx.ctx == nil {
+		return Rect{}
+	}
+
 	var cError *C.char
 	rect := C.go_mupdf_pdf_bound_page(page.ctx.ctx, page.page, &cError)
 
@@ -526,8 +562,15 @@ type PDFObject struct {
 	obj *C.pdf_obj
 }
 
-// NewPDFObject creates a new PDF object from a value
+// NewPDFObject creates a new PDF object from a value.
+//
+// It returns an error if the document has been closed or is otherwise
+// invalid.
 func (pdf *PDFDocument) NewPDFObject(value interface{}) (*PDFObject, error) {
+	if pdf.pdf == nil || pdf.ctx == nil || pdf.ctx.ctx == nil {
+		return nil, Error{message: "PDF document is closed or invalid"}
+	}
+
 	var obj *C.pdf_obj
 	var cError *C.char
 
@@ -721,8 +764,14 @@ func (writer *PDFWriter) Close() {
 // The created page includes:
 //   - Proper PDF page object with MediaBox
 //   - Link to the document's page tree
-//   - Basic resource dictionary
-//   - Default content stream for future content
+//   - Minimal resource dictionary
+//   - An empty content stream
+//
+// The page is blank: this package does not currently expose an API for
+// writing to a page content stream, so a document built solely with
+// AddPage contains no text or graphics. Use pdfcpu or an external tool
+// to add content. Earlier versions stamped placeholder text ("Page
+// Content") into every added page; that is no longer the case.
 //
 // Common page sizes (in points):
 //   - US Letter: 612 x 792
@@ -753,9 +802,18 @@ func (writer *PDFWriter) Close() {
 //	}
 //	defer customPage.Close()
 func (writer *PDFWriter) AddPage(width, height float64) (*PDFPage, error) {
-	var cError *C.char
+	if writer.writer == nil || writer.ctx == nil || writer.ctx.ctx == nil {
+		return nil, Error{message: "PDF writer is closed or invalid"}
+	}
 
-	page := C.go_mupdf_pdf_add_page(writer.ctx.ctx, writer.writer, C.float(width), C.float(height), C.int(0), &cError)
+	if width <= 0 || height <= 0 {
+		return nil, Error{message: "invalid page dimensions: width and height must be positive"}
+	}
+
+	var cError *C.char
+	var cPageNum C.int
+
+	page := C.go_mupdf_pdf_add_page(writer.ctx.ctx, writer.writer, C.float(width), C.float(height), C.int(0), &cPageNum, &cError)
 
 	if cError != nil {
 		defer C.free(unsafe.Pointer(cError))
@@ -763,20 +821,10 @@ func (writer *PDFWriter) AddPage(width, height float64) (*PDFPage, error) {
 	}
 
 	if page == nil {
-		return nil, Error{message: fmt.Sprintf("C function returned null page, page count is %d", int(C.pdf_count_pages(writer.ctx.ctx, writer.writer)))}
+		return nil, Error{message: "failed to add page: C helper returned null page"}
 	}
 
-	// Get the page count after adding the page
-	pageCount := int(C.pdf_count_pages(writer.ctx.ctx, writer.writer))
-	pageNum := pageCount - 1
-
-	// Ensure we have a valid page number
-	if pageNum < 0 {
-		// Page count might be 0 for newly created docs, set to 0 as first page
-		pageNum = 0
-	}
-
-	result := &PDFPage{ctx: writer.ctx, doc: nil, page: page, num: pageNum}
+	result := &PDFPage{ctx: writer.ctx, doc: nil, writer: writer, page: page, num: int(cPageNum)}
 	runtime.SetFinalizer(result, func(p *PDFPage) {
 		if p != nil {
 			p.Close()
@@ -847,6 +895,10 @@ func (writer *PDFWriter) AddPage(width, height float64) (*PDFPage, error) {
 //
 //	fmt.Println("PDF saved successfully")
 func (writer *PDFWriter) Save(filename string) error {
+	if writer.writer == nil || writer.ctx == nil || writer.ctx.ctx == nil {
+		return Error{message: "PDF writer is closed or invalid"}
+	}
+
 	cFilename := C.CString(filename)
 	defer C.free(unsafe.Pointer(cFilename))
 
@@ -933,6 +985,10 @@ func (writer *PDFWriter) Save(filename string) error {
 //	    fmt.Printf("Expected error: %v\n", err)
 //	}
 func (writer *PDFWriter) NewPDFObject(value interface{}) (*PDFObject, error) {
+	if writer.writer == nil || writer.ctx == nil || writer.ctx.ctx == nil {
+		return nil, Error{message: "PDF writer is closed or invalid"}
+	}
+
 	var obj *C.pdf_obj
 	var cError *C.char
 

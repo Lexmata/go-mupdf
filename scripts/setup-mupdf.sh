@@ -105,13 +105,8 @@ download_prebuilt() {
     local temp_dir=$(mktemp -d)
     
     if command -v wget >/dev/null 2>&1; then
-        wget -q --spider "$url" 2>/dev/null || {
-            log_warn "Pre-built libraries not available for $platform v$version"
-            rm -rf "$temp_dir"
-            return 1
-        }
         wget -O "$temp_dir/$filename" "$url" || {
-            log_error "Download failed"
+            log_warn "Pre-built libraries not available for $platform v$version"
             rm -rf "$temp_dir"
             return 1
         }
@@ -242,34 +237,76 @@ Examples:
 EOF
 }
 
+# Report that existing libraries are usable and exit successfully
+report_existing_libraries() {
+    log_success "MuPDF libraries already available"
+
+    local mupdf_size=$(du -h "$MUPDF_DIR/build/release/libmupdf.a" 2>/dev/null | cut -f1)
+    local third_size=$(du -h "$MUPDF_DIR/build/release/libmupdf-third.a" 2>/dev/null | cut -f1)
+
+    log_info "libmupdf.a: $mupdf_size"
+    log_info "libmupdf-third.a: $third_size"
+    log_success "Setup complete! You can now build go-mupdf"
+}
+
 # Main setup logic
 main() {
     log_info "go-mupdf MuPDF Setup"
     log_info "===================="
-    
-    # Check if already set up
-    if check_libraries && [ "$FORCE" != "1" ]; then
-        log_success "MuPDF libraries already available"
-        
-        local mupdf_size=$(du -h "$MUPDF_DIR/build/release/libmupdf.a" 2>/dev/null | cut -f1)
-        local third_size=$(du -h "$MUPDF_DIR/build/release/libmupdf-third.a" 2>/dev/null | cut -f1)
-        
-        log_info "libmupdf.a: $mupdf_size"
-        log_info "libmupdf-third.a: $third_size"
-        log_success "Setup complete! You can now build go-mupdf"
-        return 0
-    fi
-    
+
     # Detect platform
     local platform="${MUPDF_PLATFORM:-$(detect_platform)}"
+    local marker="$MUPDF_DIR/build/release/.platform"
+
+    # Check if already set up (for the right target platform)
+    if check_libraries && [ "$FORCE" != "1" ]; then
+        local existing=""
+        if [ -f "$marker" ]; then
+            existing=$(cat "$marker")
+        fi
+
+        if [ -n "$existing" ]; then
+            if [ "$existing" = "$platform" ]; then
+                report_existing_libraries
+                return 0
+            fi
+            log_warn "Existing libraries are for $existing, need $platform — reinstalling"
+            rm -f "$MUPDF_DIR/build/release/libmupdf.a" "$MUPDF_DIR/build/release/libmupdf-third.a" "$marker"
+        else
+            # Legacy install without a platform marker: inspect the archive itself
+            local target_os="${platform%%-*}"
+            local expected=""
+            case "${platform##*-}" in
+                amd64) expected="Advanced Micro Devices X86-64" ;;
+                arm64) expected="AArch64" ;;
+            esac
+            local machine=""
+            if [ "$target_os" = "linux" ] && [ -n "$expected" ] && command -v readelf >/dev/null 2>&1; then
+                local member=$(ar t "$MUPDF_DIR/build/release/libmupdf.a" 2>/dev/null | head -1)
+                machine=$(ar p "$MUPDF_DIR/build/release/libmupdf.a" "$member" 2>/dev/null | readelf -h /dev/stdin 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}')
+            fi
+            if [ -n "$machine" ] && [ "$machine" != "$expected" ]; then
+                log_warn "Existing libraries are for $machine, need $expected ($platform) — reinstalling"
+                rm -f "$MUPDF_DIR/build/release/libmupdf.a" "$MUPDF_DIR/build/release/libmupdf-third.a"
+            else
+                if [ -z "$machine" ]; then
+                    log_warn "No platform marker found and architecture could not be verified; assuming libraries match $platform"
+                fi
+                report_existing_libraries
+                return 0
+            fi
+        fi
+    fi
+
     local version="${MUPDF_VERSION:-$(get_latest_version)}"
-    
+
     log_info "Detected platform: $platform"
     log_info "Version: $version"
-    
+
     # Try to download pre-built libraries
     if [ "$BUILD_ONLY" != "1" ]; then
         if download_prebuilt "$platform" "$version"; then
+            echo "$platform" > "$marker"
             log_success "Setup complete! You can now build go-mupdf"
             return 0
         fi
@@ -285,6 +322,7 @@ main() {
     log_info "Pre-built libraries not available, building from source..."
     
     if build_from_source; then
+        echo "$platform" > "$marker"
         log_success "Setup complete! You can now build go-mupdf"
         return 0
     fi

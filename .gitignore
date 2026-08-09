@@ -63,3 +63,6 @@ third_party/mupdf/build
 dist/
 mupdf-artifacts/
 .worktrees/
+
+# Files written out of containers by scripts/docker-test.sh (e.g. coverage.out)
+.docker-artifacts/

@@ -19,6 +19,8 @@
 package mupdf
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -93,7 +95,7 @@ func testDataDir(t *testing.T) string {
 //   - PDF version 1.4 header
 //   - Root catalog object
 //   - Pages tree with single page
-//   - Page object with US Letter dimensions (612x792 points)
+//   - Page object with A4 dimensions (595x842 points)
 //   - Content stream with "Hello World" text
 //   - Complete cross-reference table and trailer
 //
@@ -101,8 +103,14 @@ func testDataDir(t *testing.T) string {
 //   - Is valid and can be opened by any PDF viewer
 //   - Contains exactly one page
 //   - Has "Hello World" text at position (50, 750)
-//   - Uses standard US Letter page size
+//   - Uses standard A4 page size
 //   - Includes proper PDF structure for testing document operations
+//
+// The file is assembled programmatically: each object's byte offset is
+// recorded as it is written, the content stream /Length is computed from
+// the actual stream bytes, and each xref entry is emitted as exactly 20
+// bytes ("%010d %05d n \n"), so the cross-reference table and startxref
+// are always correct.
 //
 // Use Cases:
 //   - Testing document opening and parsing
@@ -142,90 +150,52 @@ func createTestPDF(t *testing.T) string {
 	pdfPath := filepath.Join(dir, "test.pdf")
 	t.Logf("PDF path: %s", pdfPath)
 
-	// Create a simple PDF file with minimal content
-	f, err := os.Create(pdfPath)
-	if err != nil {
-		t.Skipf("Failed to create PDF file: %v", err)
-		return ""
+	// Build the PDF programmatically so that all cross-reference offsets,
+	// the stream /Length, and the startxref value are computed from the
+	// actual bytes written rather than hard-coded.
+	var buf bytes.Buffer
+
+	// Header
+	buf.WriteString("%PDF-1.4\n")
+
+	// The content stream body; its /Length is computed from the real bytes.
+	streamContent := "BT\n/F1 12 Tf\n50 750 Td\n(Hello World) Tj\nET\n"
+
+	// Object bodies, in object-number order (1..5).
+	objects := []string{
+		// 1: Catalog
+		"<<\n/Type /Catalog\n/Pages 2 0 R\n>>\n",
+		// 2: Pages
+		"<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\n",
+		// 3: Page
+		"<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 595 842]\n/Contents 4 0 R\n/Resources <<\n/ProcSet [/PDF /Text]\n/Font <<\n/F1 5 0 R\n>>\n>>\n>>\n",
+		// 4: Content stream
+		fmt.Sprintf("<<\n/Length %d\n>>\nstream\n%sendstream\n", len(streamContent), streamContent),
+		// 5: Font
+		"<<\n/Type /Font\n/Subtype /Type1\n/BaseFont /Helvetica\n>>\n",
 	}
 
-	// Write a properly formatted PDF file with font resources
-	// This includes a proper Font dictionary to satisfy pdfcpu validation
-	// The xref table offsets must be exactly correct (10 digits with leading zeros)
-	content := `%PDF-1.4
-1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
-/Resources <<
-/ProcSet [/PDF /Text]
-/Font <<
-/F1 5 0 R
->>
->>
->>
-endobj
-4 0 obj
-<<
-/Length 44
->>
-stream
-BT
-/F1 12 Tf
-50 750 Td
-(Hello World) Tj
-ET
-endstream
-endobj
-5 0 obj
-<<
-/Type /Font
-/Subtype /Type1
-/BaseFont /Helvetica
->>
-endobj
-xref
-0 6
-0000000000 65535 f
-0000000015 00000 n
-0000000068 00000 n
-0000000125 00000 n
-0000000281 00000 n
-0000000373 00000 n
-trailer
-<<
-/Size 6
-/Root 1 0 R
->>
-startxref
-441
-%%EOF`
-
-	_, err = f.WriteString(content)
-	if err != nil {
-		t.Skipf("Failed to write PDF content: %v", err)
-		f.Close()
-		return ""
+	// Write each object, recording its actual byte offset.
+	offsets := make([]int, len(objects))
+	for i, body := range objects {
+		offsets[i] = buf.Len()
+		fmt.Fprintf(&buf, "%d 0 obj\n%sendobj\n", i+1, body)
 	}
 
-	err = f.Close()
-	if err != nil {
-		t.Skipf("Failed to close PDF file: %v", err)
+	// Cross-reference table. Each entry must be exactly 20 bytes:
+	// 10-digit offset, space, 5-digit generation, space, keyword, space, \n.
+	startxref := buf.Len()
+	fmt.Fprintf(&buf, "xref\n0 %d\n", len(objects)+1)
+	buf.WriteString("0000000000 65535 f \n")
+	for _, off := range offsets {
+		fmt.Fprintf(&buf, "%010d %05d n \n", off, 0)
+	}
+
+	// Trailer with the real startxref offset.
+	fmt.Fprintf(&buf, "trailer\n<<\n/Size %d\n/Root 1 0 R\n>>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, startxref)
+
+	if err := os.WriteFile(pdfPath, buf.Bytes(), 0644); err != nil {
+		t.Skipf("Failed to write PDF file: %v", err)
 		return ""
 	}
 

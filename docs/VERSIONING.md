@@ -202,11 +202,19 @@ Each release includes:
 
 ## Version History
 
+See [CHANGELOG.md](../CHANGELOG.md) for the full history. Highlights:
+
+### v1.8.0 (2026-08-09)
+- Fixed a use-after-free in `Document.AsPDFDocument` / `PDFDocument.Close`
+- `PDFWriter.AddPage` links pages into the page tree and creates genuinely
+  blank pages (no more placeholder text)
+- Uniform closed-object handling across the API
+- See the "Behavior Changes" section of the changelog before upgrading
+
 ### v1.0.0 (2024-10-25)
 - Initial production-ready release
 - Complete modular architecture
 - Comprehensive documentation
-- 81.8% test coverage
 - Memory-safe operations
 
 ## Tools and Automation

@@ -135,6 +135,10 @@ type Page struct {
 //	fmt.Printf("Page size: %.1fx%.1f points\n",
 //	    bounds.X1-bounds.X0, bounds.Y1-bounds.Y0)
 func (doc *Document) LoadPage(pageNum int) (*Page, error) {
+	if doc.doc == nil || doc.ctx == nil || doc.ctx.ctx == nil {
+		return nil, Error{message: "document is closed or invalid"}
+	}
+
 	var cError *C.char
 	page := C.go_mupdf_load_page(doc.ctx.ctx, doc.doc, C.int(pageNum), &cError)
 
@@ -174,8 +178,11 @@ func (page *Page) Close() {
 //   - Coordinates are in points (1/72 inch)
 //   - Y-axis increases upward
 //
-// If an error occurs during bounds calculation, returns an empty Rect
-// with all coordinates set to 0.
+// The returned rectangle reflects the page's CropBox and /Rotate
+// entries where present, not the raw MediaBox.
+//
+// If the page has been closed, or an error occurs during bounds
+// calculation, returns an empty Rect with all coordinates set to 0.
 //
 // Example:
 //
@@ -194,6 +201,10 @@ func (page *Page) Close() {
 //	    fmt.Println("Portrait orientation")
 //	}
 func (page *Page) Bound() Rect {
+	if page.page == nil || page.ctx == nil || page.ctx.ctx == nil {
+		return Rect{}
+	}
+
 	var cError *C.char
 	rect := C.go_mupdf_bound_page(page.ctx.ctx, page.page, &cError)
 

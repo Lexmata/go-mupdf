@@ -54,9 +54,11 @@ build_mupdf() {
 
     cd "$MUPDF_DIR"
 
-    # Clean previous build
-    log_info "Cleaning previous build..."
-    make clean 2>/dev/null || true
+    # Clean previous build (only with --force; otherwise keep incremental state)
+    if [ "$FORCE" = "1" ]; then
+        log_info "Cleaning previous build..."
+        make clean 2>/dev/null || true
+    fi
 
     # Detect number of processors
     local nproc_count=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -90,8 +92,11 @@ build_mupdf() {
 create_artifact() {
     log_info "Creating artifact package..."
 
-    # Clean and create artifact directory
-    rm -rf "$ARTIFACT_DIR"
+    # Wipe the artifact directory only with --force; otherwise refresh in place
+    # so a restored CI cache is not destroyed
+    if [ "$FORCE" = "1" ]; then
+        rm -rf "$ARTIFACT_DIR"
+    fi
     mkdir -p "$ARTIFACT_DIR/lib"
     mkdir -p "$ARTIFACT_DIR/include"
 
@@ -153,6 +158,65 @@ show_artifact_info() {
     find "$ARTIFACT_DIR/include" -name "*.h" | wc -l | xargs echo "Total headers:"
 }
 
+# Check whether a previously built artifact (e.g. restored from the CI cache)
+# is already valid and can be reused without rebuilding
+check_cached_artifact() {
+    if [ ! -f "$ARTIFACT_DIR/lib/libmupdf.a" ] || [ ! -f "$ARTIFACT_DIR/lib/libmupdf-third.a" ]; then
+        return 1
+    fi
+
+    # Check library sizes (should be at least 1MB each)
+    local mupdf_size=$(stat -f%z "$ARTIFACT_DIR/lib/libmupdf.a" 2>/dev/null || stat -c%s "$ARTIFACT_DIR/lib/libmupdf.a" 2>/dev/null)
+    local third_size=$(stat -f%z "$ARTIFACT_DIR/lib/libmupdf-third.a" 2>/dev/null || stat -c%s "$ARTIFACT_DIR/lib/libmupdf-third.a" 2>/dev/null)
+
+    if [ -z "$mupdf_size" ] || [ "$mupdf_size" -lt 1000000 ]; then
+        log_warn "Cached libmupdf.a seems too small (< 1MB), rebuilding"
+        return 1
+    fi
+
+    if [ -z "$third_size" ] || [ "$third_size" -lt 1000000 ]; then
+        log_warn "Cached libmupdf-third.a seems too small (< 1MB), rebuilding"
+        return 1
+    fi
+
+    # If a tarball is present it must be readable
+    if [ -f "$ARTIFACT_DIR/mupdf-libs.tar.gz" ] && ! tar -tzf "$ARTIFACT_DIR/mupdf-libs.tar.gz" > /dev/null 2>&1; then
+        log_warn "Cached tarball is corrupted, rebuilding"
+        return 1
+    fi
+
+    return 0
+}
+
+# Recreate the tarball from a cached artifact if it is missing
+recreate_tarball() {
+    if [ -f "$ARTIFACT_DIR/mupdf-libs.tar.gz" ]; then
+        return 0
+    fi
+
+    log_info "Tarball missing from cached artifact, recreating..."
+
+    # Stage the cached libraries/headers into the source-tree layout the
+    # tarball uses, then pack them
+    mkdir -p "$MUPDF_DIR/build/release"
+    cp "$ARTIFACT_DIR/lib/libmupdf.a" "$MUPDF_DIR/build/release/"
+    cp "$ARTIFACT_DIR/lib/libmupdf-third.a" "$MUPDF_DIR/build/release/"
+    if [ -d "$ARTIFACT_DIR/include/mupdf" ]; then
+        mkdir -p "$MUPDF_DIR/include"
+        cp -r "$ARTIFACT_DIR/include/mupdf" "$MUPDF_DIR/include/"
+    fi
+
+    cd "$PROJECT_ROOT"
+    tar -czf mupdf-libs.tar.gz \
+        third_party/mupdf/build/release/libmupdf.a \
+        third_party/mupdf/build/release/libmupdf-third.a \
+        third_party/mupdf/include/mupdf
+
+    mv mupdf-libs.tar.gz "$ARTIFACT_DIR/"
+
+    log_success "Tarball recreated"
+}
+
 # Verify artifact
 verify_artifact() {
     log_info "Verifying artifact..."
@@ -206,6 +270,21 @@ main() {
     log_info "======================"
 
     check_mupdf_source
+
+    # Reuse a valid cached artifact (e.g. restored from the CI cache) instead
+    # of rebuilding; use --force to rebuild from scratch
+    if [ "$FORCE" != "1" ] && check_cached_artifact; then
+        log_info "Using cached MuPDF artifact"
+        recreate_tarball
+        verify_artifact
+        show_artifact_info
+
+        log_success "Cached artifact ready!"
+        log_info "Artifact location: $ARTIFACT_DIR"
+        log_info "Tarball: $ARTIFACT_DIR/mupdf-libs.tar.gz"
+        exit 0
+    fi
+
     build_mupdf
     create_artifact
     verify_artifact
@@ -227,6 +306,7 @@ Usage: $0 [OPTIONS]
 
 Options:
     --artifact-dir DIR     Output directory for artifacts (default: mupdf-artifacts)
+    --force                Force a clean rebuild, discarding any cached artifact
     --help                 Show this help message
 
 Environment Variables:
@@ -247,11 +327,17 @@ EOF
 }
 
 # Parse arguments
+FORCE=0
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --artifact-dir)
             ARTIFACT_DIR="$2"
             shift 2
+            ;;
+        --force)
+            FORCE=1
+            shift
             ;;
         --help)
             show_help

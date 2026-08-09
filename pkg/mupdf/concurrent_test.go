@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+// Concurrency contract verified by the tests in this file:
+//
+// A Context is NOT thread-safe and must not be shared across goroutines.
+// The supported pattern is one Context per goroutine: each goroutine creates
+// its own Context (and opens its own Document) and drops it when done.
+// No test in this file shares a Context between goroutines.
+
 // TestConcurrentContexts tests using multiple contexts concurrently
 func TestConcurrentContexts(t *testing.T) {
 	requireMuPDF(t)
@@ -101,20 +108,14 @@ func TestConcurrentContexts(t *testing.T) {
 	wg.Wait()
 }
 
-// TestConcurrentDocuments tests operating on multiple documents concurrently with a single context
+// TestConcurrentDocuments tests opening and reading the same PDF file from
+// multiple goroutines. Each goroutine uses its own Context: sharing a single
+// Context across goroutines is not supported.
 func TestConcurrentDocuments(t *testing.T) {
-	t.Skip("Temporarily disabled due to concurrency issues - will be fixed in comprehensive rewrite")
 	requireMuPDF(t)
 	skipIfShort(t)
 
-	// Create a shared context
-	ctx, err := NewContext()
-	if err != nil {
-		t.Fatalf("Failed to create context: %v", err)
-	}
-	defer ctx.Drop()
-
-	// Create a test PDF
+	// Create a test PDF that every worker opens independently
 	pdfPath := createTestPDF(t)
 
 	// Number of concurrent operations
@@ -122,21 +123,25 @@ func TestConcurrentDocuments(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
 
-	// Create a mutex to protect context access
-	var mu sync.Mutex
+	errs := make(chan error, numWorkers)
 
-	// Perform concurrent operations on the same document
+	// Open and process the same document concurrently, one context per goroutine
 	for i := 0; i < numWorkers; i++ {
 		go func(id int) {
 			defer wg.Done()
 
-			// Use mutex to protect context access
-			mu.Lock()
-			doc, err := OpenDocument(ctx, pdfPath)
-			mu.Unlock()
-
+			// Each goroutine creates its own Context
+			ctx, err := NewContext()
 			if err != nil {
-				t.Errorf("Worker %d: Failed to open document: %v", id, err)
+				errs <- fmt.Errorf("worker %d: failed to create context: %w", id, err)
+				return
+			}
+			defer ctx.Drop()
+
+			// Open the shared PDF file with this goroutine's own context
+			doc, err := OpenDocument(ctx, pdfPath)
+			if err != nil {
+				errs <- fmt.Errorf("worker %d: failed to open document: %w", id, err)
 				return
 			}
 			defer doc.Close()
@@ -144,38 +149,38 @@ func TestConcurrentDocuments(t *testing.T) {
 			// Check page count
 			pageCount := doc.CountPages()
 			if pageCount != 1 {
-				t.Errorf("Worker %d: Expected 1 page, got %d", id, pageCount)
+				errs <- fmt.Errorf("worker %d: expected 1 page, got %d", id, pageCount)
 				return
 			}
 
 			// Load the page
-			mu.Lock()
 			page, err := doc.LoadPage(0)
-			mu.Unlock()
-
 			if err != nil {
-				t.Errorf("Worker %d: Failed to load page: %v", id, err)
+				errs <- fmt.Errorf("worker %d: failed to load page: %w", id, err)
 				return
 			}
 			defer page.Close()
 
 			// Extract text
-			mu.Lock()
 			text, err := page.ExtractText()
-			mu.Unlock()
-
 			if err != nil {
-				t.Errorf("Worker %d: Failed to extract text: %v", id, err)
+				errs <- fmt.Errorf("worker %d: failed to extract text: %w", id, err)
 				return
 			}
 			defer text.Close()
 
-			_ = text.String()
+			if text.String() == "" {
+				errs <- fmt.Errorf("worker %d: extracted empty text, expected non-empty text", id)
+			}
 		}(i)
 	}
 
-	// Wait for all goroutines to complete
+	// Wait for all goroutines to complete, then report any errors
 	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
 }
 
 // TestConcurrentPDFCreation tests creating multiple PDFs concurrently
@@ -272,85 +277,84 @@ func TestConcurrentPDFCreation(t *testing.T) {
 	wg.Wait()
 }
 
-// TestParallelTextExtraction tests extracting text from multiple pages in parallel
+// TestParallelTextExtraction tests extracting text from the same PDF file in
+// parallel. Each goroutine uses its own Context and opens its own Document
+// and Page, then the extracted text is compared against a sequentially
+// extracted reference: all goroutines must produce identical non-empty text.
 func TestParallelTextExtraction(t *testing.T) {
-	t.Skip("Temporarily disabled due to concurrency issues - will be fixed in comprehensive rewrite")
 	requireMuPDF(t)
-	skipIfCIorShort(t)
+	skipIfShort(t)
 
-	// Create context
-	ctx, err := NewContext()
-	if err != nil {
-		t.Fatalf("Failed to create context: %v", err)
-	}
-	defer ctx.Drop()
+	// Create a test PDF containing known text ("Hello World")
+	pdfPath := createTestPDF(t)
 
-	// Create a multi-page PDF
-	dir := testDataDir(t)
-	pdfPath := filepath.Join(dir, "multipage_parallel.pdf")
-
-	// Create a PDF with multiple pages
-	writer, err := NewPDFWriter(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create PDF writer: %v", err)
-	}
-
-	// Add multiple pages
-	numPages := 10
-	for i := 0; i < numPages; i++ {
-		_, err = writer.AddPage(595, 842) // A4 size
+	// extract opens the PDF with a fresh Context and returns the text of page 0
+	extract := func() (string, error) {
+		ctx, err := NewContext()
 		if err != nil {
-			t.Fatalf("Failed to add page: %v", err)
+			return "", fmt.Errorf("failed to create context: %w", err)
 		}
-	}
+		defer ctx.Drop()
 
-	// Save the PDF
-	err = writer.Save(pdfPath)
-	if err != nil {
-		t.Fatalf("Failed to save PDF: %v", err)
-	}
-	writer.Close()
-
-	// Open the PDF
-	doc, err := OpenDocument(ctx, pdfPath)
-	if err != nil {
-		t.Fatalf("Failed to open document: %v", err)
-	}
-	defer doc.Close()
-
-	// Load all pages first to avoid concurrent page loading
-	pages := make([]*Page, numPages)
-	for i := 0; i < numPages; i++ {
-		page, err := doc.LoadPage(i)
+		doc, err := OpenDocument(ctx, pdfPath)
 		if err != nil {
-			t.Fatalf("Failed to load page %d: %v", i, err)
+			return "", fmt.Errorf("failed to open document: %w", err)
 		}
-		pages[i] = page
+		defer doc.Close()
+
+		page, err := doc.LoadPage(0)
+		if err != nil {
+			return "", fmt.Errorf("failed to load page: %w", err)
+		}
+		defer page.Close()
+
+		text, err := page.ExtractText()
+		if err != nil {
+			return "", fmt.Errorf("failed to extract text: %w", err)
+		}
+		defer text.Close()
+
+		return text.String(), nil
 	}
 
-	// Extract text from all pages in parallel
+	// Sequential reference extraction
+	reference, err := extract()
+	if err != nil {
+		t.Fatalf("Sequential reference extraction failed: %v", err)
+	}
+	if reference == "" {
+		t.Fatal("Reference extraction produced empty text, expected non-empty text")
+	}
+
+	// Extract the same text from multiple goroutines, one context per goroutine
+	numWorkers := 8
+	results := make([]string, numWorkers)
+	workerErrs := make([]error, numWorkers)
+
 	var wg sync.WaitGroup
-	wg.Add(numPages)
-
-	for i := 0; i < numPages; i++ {
-		go func(pageIdx int, page *Page) {
+	wg.Add(numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go func(id int) {
 			defer wg.Done()
-			defer page.Close()
-
-			text, err := page.ExtractText()
-			if err != nil {
-				t.Errorf("Failed to extract text from page %d: %v", pageIdx, err)
-				return
-			}
-			defer text.Close()
-
-			content := text.String()
-			t.Logf("Page %d text length: %d", pageIdx, len(content))
-		}(i, pages[i])
+			results[id], workerErrs[id] = extract()
+		}(i)
 	}
-
-	// Wait for all text extraction operations to complete
 	wg.Wait()
+
+	// Every goroutine must have produced the same non-empty text
+	for i := 0; i < numWorkers; i++ {
+		if workerErrs[i] != nil {
+			t.Errorf("Worker %d: %v", i, workerErrs[i])
+			continue
+		}
+		if results[i] == "" {
+			t.Errorf("Worker %d: extracted empty text, expected non-empty text", i)
+			continue
+		}
+		if results[i] != reference {
+			t.Errorf("Worker %d: extracted text mismatch: got %q, want %q", i, results[i], reference)
+		}
+	}
 }
 
 // TestConcurrentResourceCleanup tests cleanup of resources in concurrent environment

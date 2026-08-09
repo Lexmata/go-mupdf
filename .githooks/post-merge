@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Post-merge hook for automated versioning
-# Creates git tags when release branches are merged to main
+# Creates git tags when release/X.Y.Z or hotfix/X.Y.Z branches are merged to main
 # Note: VERSION file is updated by prepare-commit-msg hook as part of the merge commit
 
 # Colors for output
@@ -21,61 +21,37 @@ fi
 
 echo -e "${BLUE}🔍 Checking for release merge...${NC}"
 
-# Get the merge commit (if this is a merge)
-MERGE_HEAD=$(git rev-parse HEAD 2>/dev/null)
-PREV_HEAD=$(git rev-parse HEAD^1 2>/dev/null 2>/dev/null || echo "")
-
-# Check if this is actually a merge commit
-if [ -z "$PREV_HEAD" ]; then
+# Check if this is actually a merge commit (merge commits have a second parent)
+if ! git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
     # Not a merge, just a regular commit
     exit 0
 fi
 
-# Get the merged branch name(s)
-MERGED_BRANCHES=$(git log --oneline --merges -1 --format="%P" 2>/dev/null | head -1)
-if [ -z "$MERGED_BRANCHES" ]; then
-    # Try to get branch name from reflog or merge message
-    MERGE_MESSAGE=$(git log -1 --format="%B" 2>/dev/null)
-
-    # Try to extract release branch name from merge message
-    if echo "$MERGE_MESSAGE" | grep -qE "Merge.*release/"; then
-        RELEASE_BRANCH=$(echo "$MERGE_MESSAGE" | grep -oE "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
-    fi
-else
-    # Try to find release branch in merged commits
-    RELEASE_BRANCH=$(git branch -r --contains "$MERGE_HEAD" 2>/dev/null | grep -E "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1 | sed 's|^[[:space:]]*origin/||' | sed 's|^[[:space:]]*||')
+# Primary detection: extract the release/hotfix branch name from the last
+# merge commit message
+RELEASE_BRANCH=""
+LAST_MERGE=$(git log --merges -1 --format="%B" 2>/dev/null)
+if echo "$LAST_MERGE" | grep -qE "(release|hotfix)/"; then
+    RELEASE_BRANCH=$(echo "$LAST_MERGE" | grep -oE "(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
 fi
 
-# Alternative: Check recent merge commits for release branches
+# Fallback: resolve the merged parent's name via name-rev
 if [ -z "$RELEASE_BRANCH" ]; then
-    # Look at the last merge commit message
-    LAST_MERGE=$(git log --merges -1 --format="%B" 2>/dev/null)
-    if echo "$LAST_MERGE" | grep -qE "release/"; then
-        RELEASE_BRANCH=$(echo "$LAST_MERGE" | grep -oE "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+    MERGED_REF=$(git rev-parse HEAD^2 2>/dev/null)
+    if [ -n "$MERGED_REF" ]; then
+        BRANCH_NAME=$(git name-rev --name-only "$MERGED_REF" 2>/dev/null | sed 's|^remotes/origin/||' | sed 's|^origin/||')
+        if echo "$BRANCH_NAME" | grep -qE "^(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+"; then
+            RELEASE_BRANCH="$BRANCH_NAME"
+        fi
     fi
 fi
 
-# If still no release branch found, check if any release branch was recently merged
-if [ -z "$RELEASE_BRANCH" ]; then
-    # Check merged branches in the last commit
-    MERGED_REFS=$(git log -1 --format="%P" 2>/dev/null)
-    if [ -n "$MERGED_REFS" ]; then
-        for ref in $MERGED_REFS; do
-            BRANCH_NAME=$(git name-rev --name-only "$ref" 2>/dev/null | sed 's|^remotes/origin/||' | sed 's|^origin/||')
-            if echo "$BRANCH_NAME" | grep -qE "^release/[0-9]+\.[0-9]+\.[0-9]+"; then
-                RELEASE_BRANCH="$BRANCH_NAME"
-                break
-            fi
-        done
-    fi
-fi
-
-# Extract version from release branch name (release/X.Y.Z -> X.Y.Z)
+# Extract version from branch name (release/X.Y.Z or hotfix/X.Y.Z[-suffix] -> X.Y.Z)
 if [ -n "$RELEASE_BRANCH" ]; then
-    VERSION=$(echo "$RELEASE_BRANCH" | sed -E 's|^release/([0-9]+\.[0-9]+\.[0-9]+).*|\1|')
+    VERSION=$(echo "$RELEASE_BRANCH" | sed -E 's,^(release|hotfix)/([0-9]+\.[0-9]+\.[0-9]+).*,\2,')
 
         if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "${GREEN}✅ Release branch detected: $RELEASE_BRANCH${NC}"
+        echo -e "${GREEN}✅ Release/hotfix branch detected: $RELEASE_BRANCH${NC}"
         echo -e "${BLUE}📦 Version: $VERSION${NC}"
 
         # Read current version from VERSION file (should be updated by prepare-commit-msg)
@@ -107,8 +83,9 @@ Version updated to $VERSION in merge commit." 2>/dev/null || {
         fi
 
         # Check if tag needs to be pushed
+        # (ls-remote exits 0 even when the tag is absent, so test its output)
         if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            if ! git ls-remote --tags origin "v$VERSION" >/dev/null 2>&1; then
+            if [ -z "$(git ls-remote --tags origin "v$VERSION" 2>/dev/null)" ]; then
                 echo -e "${YELLOW}📤 Tag v$VERSION created locally but not pushed${NC}"
                 echo -e "   Push with: git push origin v$VERSION"
             fi
@@ -117,7 +94,7 @@ Version updated to $VERSION in merge commit." 2>/dev/null || {
         echo -e "${YELLOW}⚠️  Could not extract valid version from branch: $RELEASE_BRANCH${NC}"
     fi
 else
-    # Not a release merge, exit silently
+    # Not a release/hotfix merge, exit silently
     exit 0
 fi
 

@@ -2,21 +2,15 @@ package mupdf
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-// Final tests to push coverage to 90%+
+// Tests for resource lifecycle: creation, close, and post-close behavior.
 
-func TestSkipFunctions(t *testing.T) {
-	// Test skipIfShort when not in short mode
-	skipIfShort(t) // Should not skip
-
-	// Test skipIfCIorShort when not in CI
-	skipIfCIorShort(t) // Should not skip
-}
-
-func TestRequireMuPDFErrorPaths(t *testing.T) {
-	// This will test the requireMuPDF function thoroughly
+func TestRequireMuPDFHappyPath(t *testing.T) {
+	// requireMuPDF's error branch (MuPDF unavailable) is unreachable without
+	// injection, so only the happy path is exercised here.
 	requireMuPDF(t)
 }
 
@@ -46,12 +40,6 @@ func TestAllHelperFunctionPaths(t *testing.T) {
 	if _, err := os.Stat(dir); err != nil {
 		t.Errorf("Test data directory does not exist: %v", err)
 	}
-}
-
-func TestRunGC(t *testing.T) {
-	// Test the runGC helper function
-	runGC()
-	runGC() // Call multiple times to ensure it's safe
 }
 
 func TestContextMultipleOperations(t *testing.T) {
@@ -113,14 +101,17 @@ func TestDocumentOperationsAfterClose(t *testing.T) {
 
 	// Get initial page count
 	count1 := doc.CountPages()
-	t.Logf("Initial page count: %d", count1)
+	if count1 == 0 {
+		t.Error("Expected at least one page before close")
+	}
 
 	// Close document
 	doc.Close()
 
-	// Try operations after close (should be safe due to our null checks)
-	count2 := doc.CountPages()
-	t.Logf("Page count after close: %d", count2)
+	// Post-close contract: CountPages on a closed document returns 0.
+	if count2 := doc.CountPages(); count2 != 0 {
+		t.Errorf("CountPages after Close = %d, want 0", count2)
+	}
 
 	// Try closing again (should be safe)
 	doc.Close()
@@ -148,14 +139,17 @@ func TestPageOperationsAfterClose(t *testing.T) {
 
 		// Get bounds before close
 		bounds1 := page.Bound()
-		t.Logf("Bounds before close: %+v", bounds1)
+		if bounds1 == (Rect{}) {
+			t.Error("Expected non-zero bounds before close")
+		}
 
 		// Close page
 		page.Close()
 
-		// Try operations after close (should be safe due to our null checks)
-		bounds2 := page.Bound()
-		t.Logf("Bounds after close: %+v", bounds2)
+		// Post-close contract: Bound on a closed page returns the zero Rect.
+		if bounds2 := page.Bound(); bounds2 != (Rect{}) {
+			t.Errorf("Bound after Close = %+v, want zero Rect", bounds2)
+		}
 
 		// Try closing again (should be safe)
 		page.Close()
@@ -184,8 +178,24 @@ func TestWriterOperationsAfterClose(t *testing.T) {
 	// Close writer
 	writer.Close()
 
-	// Try operations after close (should be safe)
-	writer.Close() // Double close should be safe
+	// Double close should be safe
+	writer.Close()
+
+	// Post-close contract: operations on a closed writer return errors.
+	if p, err := writer.AddPage(612, 792); err == nil {
+		p.Close()
+		t.Error("AddPage on closed writer: expected error, got nil")
+	}
+
+	outPath := filepath.Join(t.TempDir(), "closed.pdf")
+	if err := writer.Save(outPath); err == nil {
+		t.Error("Save on closed writer: expected error, got nil")
+	}
+
+	if obj, err := writer.NewPDFObject("test"); err == nil {
+		obj.Drop()
+		t.Error("NewPDFObject on closed writer: expected error, got nil")
+	}
 }
 
 func TestPDFObjectOperationsAfterDrop(t *testing.T) {
@@ -213,4 +223,4 @@ func TestPDFObjectOperationsAfterDrop(t *testing.T) {
 	obj.Drop()
 }
 
-// Note: createValidTestPDF is already defined in comprehensive_coverage_test.go
+// Note: createValidTestPDF is defined in memory_test.go

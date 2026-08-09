@@ -4,10 +4,26 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-// TestResourceCleanupWithFinalizers tests that finalizers properly clean up resources
+// finalizerSentinel is a small type used to observe that the garbage
+// collector actually ran finalizers during a test.
+type finalizerSentinel struct {
+	pad [16]byte
+}
+
+// TestResourceCleanupWithFinalizers tests that finalizers properly clean up resources.
+//
+// The package's C-side finalizers (on Document, Page, TextPage) are not
+// directly observable without API changes, so this test asserts what is
+// observable: it installs a test-local sentinel finalizer alongside the
+// package objects, drops all references, and forces GC until the sentinel
+// finalizer fires. That proves the GC + finalizer machinery executed over
+// the same collection cycles in which the package finalizers were queued,
+// and that running those finalizers did not crash.
 func TestResourceCleanupWithFinalizers(t *testing.T) {
 	requireMuPDF(t)
 	skipIfCIorShort(t)
@@ -43,16 +59,30 @@ func TestResourceCleanupWithFinalizers(t *testing.T) {
 	// Get text content
 	_ = text.String()
 
-	// Set variables to nil to allow garbage collection
+	// Install a sentinel finalizer that flips an atomic flag when it runs
+	var sentinelFired atomic.Bool
+	sentinel := &finalizerSentinel{}
+	runtime.SetFinalizer(sentinel, func(*finalizerSentinel) {
+		sentinelFired.Store(true)
+	})
+
+	// Set all references to nil to make the objects (and their finalizers)
+	// eligible for collection
 	text = nil
 	page = nil
 	doc = nil
+	sentinel = nil
 
-	// Run garbage collection once to trigger finalizers
-	runtime.GC()
+	// Force GC until the sentinel finalizer has run (or we time out)
+	deadline := time.Now().Add(2 * time.Second)
+	for !sentinelFired.Load() && time.Now().Before(deadline) {
+		runtime.GC()
+		time.Sleep(10 * time.Millisecond)
+	}
 
-	// If we reach here without crashes, finalizers are working
-	t.Log("Finalizers successfully cleaned up resources")
+	if !sentinelFired.Load() {
+		t.Fatal("Sentinel finalizer did not run within 2s; GC finalizer machinery did not execute")
+	}
 }
 
 // TestNestedResourceCleanup tests cleanup of resources in nested function calls
@@ -280,85 +310,94 @@ func TestLargeDocumentCleanup(t *testing.T) {
 	runtime.GC()
 }
 
-// TestResourceLeakCheck tests for resource leaks by creating and destroying many objects
+// TestResourceLeakCheck tests for resource leaks by creating and destroying
+// many objects, asserting that heap usage stays within loose bounds relative
+// to a post-warm-up baseline. The bounds are deliberately very generous:
+// they catch runaway per-iteration leaks without flaking on normal allocator
+// variance.
 func TestResourceLeakCheck(t *testing.T) {
 	requireMuPDF(t)
-	skipIfCIorShort(t)
 
-	// Record initial memory stats
-	var initialStats runtime.MemStats
-	runtime.ReadMemStats(&initialStats)
+	dir := testDataDir(t)
+	pdfPath := filepath.Join(dir, "leak_test.pdf")
 
-	// Number of iterations
-	iterations := 100
+	// One full create/use/destroy cycle of every object type
+	iteration := func() {
+		// Create context
+		ctx, err := NewContext()
+		if err != nil {
+			t.Fatalf("Failed to create context: %v", err)
+		}
+		defer ctx.Drop()
+
+		// Create a PDF writer
+		writer, err := NewPDFWriter(ctx)
+		if err != nil {
+			t.Fatalf("Failed to create PDF writer: %v", err)
+		}
+		defer writer.Close()
+
+		// Add a page
+		_, err = writer.AddPage(595, 842)
+		if err != nil {
+			t.Fatalf("Failed to add page: %v", err)
+		}
+
+		// Create some PDF objects
+		for j := 0; j < 10; j++ {
+			obj, err := writer.NewPDFObject(j)
+			if err != nil {
+				t.Fatalf("Failed to create object: %v", err)
+			}
+			obj.Drop()
+		}
+
+		// Save to a temporary file
+		err = writer.Save(pdfPath)
+		if err != nil {
+			t.Fatalf("Failed to save PDF: %v", err)
+		}
+
+		// Open the document
+		doc, err := OpenDocument(ctx, pdfPath)
+		if err != nil {
+			t.Fatalf("Failed to open document: %v", err)
+		}
+		defer doc.Close()
+
+		// Load the page
+		page, err := doc.LoadPage(0)
+		if err != nil {
+			t.Fatalf("Failed to load page: %v", err)
+		}
+		defer page.Close()
+
+		// Extract text
+		text, err := page.ExtractText()
+		if err != nil {
+			t.Fatalf("Failed to extract text: %v", err)
+		}
+		defer text.Close()
+
+		_ = text.String()
+
+		// Delete the file to avoid filling the disk
+		os.Remove(pdfPath)
+	}
+
+	// Warm-up iteration: let one-time allocations (lazy initialization,
+	// caches) settle before taking the baseline measurement
+	iteration()
+
+	runtime.GC()
+	runtime.GC()
+	var warmupStats runtime.MemStats
+	runtime.ReadMemStats(&warmupStats)
 
 	// Create and destroy many objects
+	iterations := 50
 	for i := 0; i < iterations; i++ {
-		func() {
-			// Create context
-			ctx, err := NewContext()
-			if err != nil {
-				t.Fatalf("Failed to create context: %v", err)
-			}
-			defer ctx.Drop()
-
-			// Create a PDF writer
-			writer, err := NewPDFWriter(ctx)
-			if err != nil {
-				t.Fatalf("Failed to create PDF writer: %v", err)
-			}
-			defer writer.Close()
-
-			// Add a page
-			_, err = writer.AddPage(595, 842)
-			if err != nil {
-				t.Fatalf("Failed to add page: %v", err)
-			}
-
-			// Create some PDF objects
-			for j := 0; j < 10; j++ {
-				obj, err := writer.NewPDFObject(j)
-				if err != nil {
-					t.Fatalf("Failed to create object: %v", err)
-				}
-				obj.Drop()
-			}
-
-			// Save to a temporary file
-			dir := testDataDir(t)
-			pdfPath := filepath.Join(dir, "leak_test.pdf")
-
-			err = writer.Save(pdfPath)
-			if err != nil {
-				t.Fatalf("Failed to save PDF: %v", err)
-			}
-
-			// Open the document
-			doc, err := OpenDocument(ctx, pdfPath)
-			if err != nil {
-				t.Fatalf("Failed to open document: %v", err)
-			}
-			defer doc.Close()
-
-			// Load the page
-			page, err := doc.LoadPage(0)
-			if err != nil {
-				t.Fatalf("Failed to load page: %v", err)
-			}
-			defer page.Close()
-
-			// Extract text
-			text, err := page.ExtractText()
-			if err != nil {
-				t.Fatalf("Failed to extract text: %v", err)
-			}
-			defer text.Close()
-
-			_ = text.String()
-
-			// Delete the file to avoid filling the disk
-			os.Remove(pdfPath)
-		}()
+		iteration()
 
 		// Run garbage collection every 10 iterations
 		if i%10 == 0 {
@@ -366,19 +405,29 @@ func TestResourceLeakCheck(t *testing.T) {
 		}
 	}
 
-	// Final garbage collection
-	runGC()
-
-	// Record final memory stats
+	// Final garbage collection before measuring
+	runtime.GC()
+	runtime.GC()
 	var finalStats runtime.MemStats
 	runtime.ReadMemStats(&finalStats)
 
-	// Log memory usage
-	t.Logf("Initial heap objects: %d", initialStats.HeapObjects)
-	t.Logf("Final heap objects: %d", finalStats.HeapObjects)
+	t.Logf("Warm-up heap objects: %d, final heap objects: %d",
+		warmupStats.HeapObjects, finalStats.HeapObjects)
+	t.Logf("Warm-up heap alloc: %d bytes, final heap alloc: %d bytes",
+		warmupStats.HeapAlloc, finalStats.HeapAlloc)
 
-	// Note: We don't assert on the exact memory usage as it can vary,
-	// but we log it to help identify potential leaks in manual analysis
+	// Assert loose-but-real bounds against the warm-up baseline
+	maxHeapObjects := warmupStats.HeapObjects*2 + 10000
+	if finalStats.HeapObjects >= maxHeapObjects {
+		t.Errorf("Possible resource leak: final heap objects %d exceeds bound %d (warm-up baseline %d)",
+			finalStats.HeapObjects, maxHeapObjects, warmupStats.HeapObjects)
+	}
+
+	const allocSlack = 32 << 20 // 32 MB
+	if finalStats.HeapAlloc > warmupStats.HeapAlloc+allocSlack {
+		t.Errorf("Possible resource leak: heap alloc grew from %d to %d bytes (more than %d bytes of slack)",
+			warmupStats.HeapAlloc, finalStats.HeapAlloc, int64(allocSlack))
+	}
 }
 
 // TestDoubleCloseAllTypes tests double-closing all resource types

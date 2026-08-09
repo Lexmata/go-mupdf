@@ -59,10 +59,40 @@ THIRD_PARTY="${PROJECT_ROOT}/third_party/mupdf"
 BUILD_DIR="${THIRD_PARTY}/build/release"
 INCLUDE_DIR="${THIRD_PARTY}/include"
 
-# Check if already set up
+# Check if already set up (and built for the right target platform)
+PLATFORM_MARKER="${BUILD_DIR}/.platform"
 if [ -f "${BUILD_DIR}/libmupdf.a" ] && [ -f "${BUILD_DIR}/libmupdf-third.a" ] && [ -d "${INCLUDE_DIR}/mupdf" ]; then
-    echo "✓ Pre-built libraries already installed at ${THIRD_PARTY}"
-    exit 0
+    if [ -f "${PLATFORM_MARKER}" ]; then
+        EXISTING_PLATFORM=$(cat "${PLATFORM_MARKER}")
+        if [ "${EXISTING_PLATFORM}" = "${PLATFORM}" ]; then
+            echo "✓ MuPDF libraries already present at ${THIRD_PARTY}"
+            exit 0
+        fi
+        echo "⚠ Existing libraries are for ${EXISTING_PLATFORM}, need ${PLATFORM} — reinstalling"
+        rm -f "${BUILD_DIR}/libmupdf.a" "${BUILD_DIR}/libmupdf-third.a" "${PLATFORM_MARKER}"
+    else
+        # Legacy install without a platform marker: inspect the archive itself
+        case "${TARGET_ARCH}" in
+            amd64) EXPECTED_MACHINE="Advanced Micro Devices X86-64" ;;
+            arm64) EXPECTED_MACHINE="AArch64" ;;
+            *)     EXPECTED_MACHINE="" ;;
+        esac
+        MACHINE=""
+        if [ "${TARGET_OS}" = "linux" ] && [ -n "${EXPECTED_MACHINE}" ] && command -v readelf >/dev/null 2>&1; then
+            MEMBER=$(ar t "${BUILD_DIR}/libmupdf.a" 2>/dev/null | head -1 || true)
+            MACHINE=$(ar p "${BUILD_DIR}/libmupdf.a" "${MEMBER}" 2>/dev/null | readelf -h /dev/stdin 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}' || true)
+        fi
+        if [ -n "${MACHINE}" ] && [ "${MACHINE}" != "${EXPECTED_MACHINE}" ]; then
+            echo "⚠ Existing libraries are for ${MACHINE}, need ${EXPECTED_MACHINE} (${PLATFORM}) — reinstalling"
+            rm -f "${BUILD_DIR}/libmupdf.a" "${BUILD_DIR}/libmupdf-third.a"
+        else
+            if [ -z "${MACHINE}" ]; then
+                echo "⚠ No platform marker found and architecture could not be verified; assuming libraries match ${PLATFORM}"
+            fi
+            echo "✓ MuPDF libraries already present at ${THIRD_PARTY}"
+            exit 0
+        fi
+    fi
 fi
 
 # Get version from VERSION file or git tag
@@ -130,6 +160,8 @@ cp -r "${EXTRACTED_DIR}/include/mupdf" "${INCLUDE_DIR}/"
 
 # Verify
 if [ -f "${BUILD_DIR}/libmupdf.a" ] && [ -f "${BUILD_DIR}/libmupdf-third.a" ]; then
+    # Record which target platform these libraries were installed for
+    echo "${PLATFORM}" > "${PLATFORM_MARKER}"
     echo "✓ Successfully downloaded and installed MuPDF libraries"
     echo "  Location: ${THIRD_PARTY}"
 else

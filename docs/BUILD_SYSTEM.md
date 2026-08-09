@@ -19,10 +19,10 @@ make setup
 go build ./pkg/mupdf/
 ```
 
-The `make setup` command runs `scripts/setup-mupdf.sh` which:
-1. Downloads pre-built libraries from Bitbucket Downloads (if available)
-2. Falls back to building from source if needed
-3. Builds with the correct flags: `make libs USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release`
+The `make setup` command runs `scripts/install.sh` which:
+1. Runs `scripts/download-libs.sh` to download pre-built libraries from Bitbucket Downloads (if available for your platform)
+2. Falls back to `scripts/setup-mupdf.sh` to build from source if the download fails
+3. Source builds use the correct flags: `make libs USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release`
 
 ### 2. Using `go get` (Downstream Consumers)
 
@@ -35,7 +35,7 @@ go get bitbucket.org/lexmata/go-mupdf
 The `pkg/mupdf/setup.go` file's `init()` function automatically runs before CGO compilation. This function:
 
 1. Checks if `libmupdf.a` and `libmupdf-third.a` already exist
-2. If not, downloads MuPDF tarball from GitHub releases (https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.11.tar.gz)
+2. If not, downloads MuPDF tarball from GitHub releases (https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.3.tar.gz)
 3. Extracts the tarball to `third_party/mupdf`
 4. Builds MuPDF libraries with the correct flags
 5. Verifies both `libmupdf.a` and `libmupdf-third.a` were created
@@ -155,9 +155,9 @@ User runs: go get bitbucket.org/lexmata/go-mupdf
     │   │   │
     │   │   ├─> Check if third_party/mupdf/Makefile exists
     │   │   │   └─> If not, download tarball from GitHub
-    │   │   │       ├─> Download: https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.11.tar.gz
+    │   │   │       ├─> Download: https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.3.tar.gz
     │   │   │       ├─> Extract to third_party/
-    │   │   │       └─> Rename mupdf-1.26.11 to mupdf
+    │   │   │       └─> Rename mupdf-1.26.3 to mupdf
     │   │   │
     │   │   └─> Build MuPDF libraries
     │   │       ├─> Run: make -j<N> USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs
@@ -178,10 +178,9 @@ Developer clones repository
     │
     ├─> Run: make setup
     │   │
-    │   └─> scripts/setup-mupdf.sh
-    │       ├─> Check if libraries exist
-    │       ├─> Try to download pre-built libraries from Bitbucket
-    │       └─> Fall back to building from source if needed
+    │   └─> scripts/install.sh
+    │       ├─> Run scripts/download-libs.sh (download pre-built libraries from Bitbucket)
+    │       └─> Fall back to scripts/setup-mupdf.sh (build from source) if download fails
     │
     └─> go build ./pkg/mupdf/
 ```
@@ -279,7 +278,7 @@ The CI/CD pipeline uses a three-tier approach:
 
 1. **Build Once**: MuPDF is built once per pipeline run
 2. **Artifact Sharing**: Built libraries are shared across all pipeline steps
-3. **Caching**: Libraries are cached based on submodule commit hash
+3. **Caching**: Libraries are cached, keyed on `.gitmodules` and the `mupdf.lock` pin file
 
 This reduces build time by 50-75% compared to building in every step.
 

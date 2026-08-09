@@ -19,35 +19,36 @@ This will configure Git to use hooks from this directory.
 Runs before each commit to ensure code quality and enforce git-flow workflow:
 
 **Git Flow Branch Protection:**
-- **Main branch**: Only allows merges from `develop` branch (blocks direct commits)
-- **Develop branch**: Allows all commits
+- **Main branch**: Blocks direct commits; only allows merges from `develop`, `release/*`, `hotfix/*`, or version tags (`tags/vX.Y.Z`)
+- **Develop branch**: Blocks direct commits; only allows merges from `feature/*`, `bugfix/*`, `hotfix/*`, `release/*` branches, or version tags
 - **Feature/Bugfix/Hotfix/Release branches**: Allows all commits
 - **Other branches**: Warns but allows commits
 
 ### pre-push
 
-Runs before each push to ensure all pre-commit checks have passed:
+Runs before each push:
 
 **Enforcement:**
-- **Blocks push** if any pre-commit checks fail
-- **Runs pre-commit hook** to verify code quality
-- **Prevents bypassing** - hooks are mandatory and cannot be skipped with `--no-verify`
+- **Runs the pre-commit hook** for branch protection, formatting, `go vet`, and lint checks
+- **Runs tests on the pushed range**: computes the Go files changed in the commits being pushed (against the upstream branch, falling back to the last 10 commits; `examples/` and `third_party/` are excluded) and, if any changed, runs `go test -short ./pkg/mupdf/`
+- **Blocks push** if any check or test fails
+- Ref deletions skip all checks; tag pushes skip merge validation
 
 **Purpose:**
 - Ensures code quality standards are maintained in remote repository
 - Prevents pushing broken or unformatted code
 - Enforces git-flow branch rules before push
 
-**Code Quality Checks:**
+**Code Quality Checks (via pre-commit):**
 - **Code Formatting**: Checks that all Go files are formatted with `gofmt`
-- **Static Analysis**: Runs `go vet` to catch common errors
+- **Static Analysis**: Runs `go vet ./pkg/...` to catch common errors
 - **Linting**: Runs `golangci-lint` if installed (non-blocking)
-- **Tests**: Runs quick tests on changed packages and the main package
+- **Tests**: `go test -short ./pkg/mupdf/` runs whenever the pushed commits touch Go files
 
-The hook will:
+The pre-commit hook will:
 - Automatically build the MuPDF library if needed
-- Only test packages with staged changes (for speed)
-- Block commits if formatting or tests fail
+- Only test packages with staged changes (for speed); the pre-push hook tests the pushed range instead
+- Block commits if formatting, vet, or tests fail
 - Warn (but not block) on golangci-lint issues
 - Enforce git-flow workflow rules
 
@@ -91,16 +92,18 @@ ci: add Bitbucket Pipelines configuration
 
 ### post-merge
 
-Creates git tags when release branches are merged to main:
+Creates git tags when release or hotfix branches are merged to main:
 
-- **Detects Release Merges**: Identifies when a `release/X.Y.Z` branch was merged to main
+- **Detects Release/Hotfix Merges**: Identifies when a `release/X.Y.Z` or `hotfix/X.Y.Z[-suffix]` branch was merged to main
 - **Creates Git Tags**: Creates an annotated git tag `vX.Y.Z` for the release
 
 **How it works:**
 1. Runs after every merge on the main branch
-2. Checks if the merge included a release branch (`release/X.Y.Z`)
+2. Checks if the merge included a release or hotfix branch (`release/X.Y.Z` or `hotfix/X.Y.Z[-suffix]`)
 3. Extracts the version number from the branch name
 4. Creates git tag `vX.Y.Z` if it doesn't exist
+
+**Note:** Hotfix branches must be named `hotfix/X.Y.Z[-suffix]` (e.g. `hotfix/1.4.5-fix-arm64-upload`) for auto-versioning to detect them.
 
 **Example:**
 ```bash
@@ -120,16 +123,16 @@ git merge release/1.2.0
 
 ### prepare-commit-msg
 
-Automatically updates the VERSION file when merging release branches to main:
+Automatically updates the VERSION file when merging release or hotfix branches to main:
 
 - **Runs During Merge**: Executes when creating a merge commit
-- **Detects Release Branches**: Identifies `release/X.Y.Z` branches being merged
+- **Detects Release/Hotfix Branches**: Identifies `release/X.Y.Z` and `hotfix/X.Y.Z[-suffix]` branches being merged
 - **Updates VERSION File**: Updates the VERSION file with the new version
 - **Stages Changes**: Stages the VERSION file so it's included in the merge commit
 
 **How it works:**
 1. Runs when creating a merge commit on the main branch
-2. Checks if the merge includes a release branch (`release/X.Y.Z`)
+2. Checks if the merge includes a release or hotfix branch (`release/X.Y.Z` or `hotfix/X.Y.Z[-suffix]`)
 3. Extracts the version number from the branch name
 4. Updates `VERSION` file if needed
 5. Stages the VERSION file so it becomes part of the merge commit
@@ -160,11 +163,12 @@ The pre-commit hook enforces the following git-flow workflow:
 
 1. **Main Branch** (`main` or `master`)
    - ❌ **Blocks direct commits**
-   - ✅ **Allows merges from `develop` only**
+   - ✅ **Allows merges from `develop`, `release/*`, `hotfix/*`, or version tags**
    - Used for production releases
 
 2. **Develop Branch** (`develop`)
-   - ✅ **Allows all commits**
+   - ❌ **Blocks direct commits**
+   - ✅ **Allows merges from `feature/*`, `bugfix/*`, `hotfix/*`, `release/*`, or version tags**
    - Used for integration of features
 
 3. **Feature Branches** (`feature/*`)
@@ -181,6 +185,7 @@ The pre-commit hook enforces the following git-flow workflow:
    - ✅ **Allows all commits**
    - Created from `main`
    - Merged to both `develop` and `main`
+   - Must be named `hotfix/X.Y.Z[-suffix]` for the versioning hooks to bump VERSION and create the `vX.Y.Z` tag automatically
 
 6. **Release Branches** (`release/*`)
    - ✅ **Allows all commits**
@@ -258,13 +263,7 @@ The hook uses `-short` flag to run quick tests. For full tests, run:
 go test ./pkg/mupdf/
 ```
 
-### Bypassing hooks (not recommended)
+### Hooks are mandatory
 
-If you need to bypass hooks in an emergency:
-
-```bash
-git commit --no-verify
-```
-
-**Warning**: Only use this if absolutely necessary, as it bypasses all quality checks.
+These hooks are mandatory for this project. Do not bypass them with `--no-verify` or similar flags. If a hook fails, fix the underlying issue (formatting, vet errors, failing tests, branch rules) and try again.
 

@@ -2,7 +2,7 @@
 // +build ignore
 
 // This file provides setup functionality for MuPDF libraries.
-// It can be run manually with: go run setup.go
+// It can be run manually with: go run setup.go (from the pkg/mupdf directory)
 
 package main
 
@@ -16,7 +16,8 @@ import (
 
 const (
 	// MuPDF version to clone
-	mupdfVersion = "1.26.11"
+	// must match FZ_VERSION in third_party/mupdf/include/mupdf/fitz/version.h
+	mupdfVersion = "1.26.3"
 	// MuPDF git repository
 	mupdfRepoURL = "https://git.ghostscript.com/mupdf.git"
 )
@@ -74,6 +75,16 @@ func ensureMuPDFLibraries() error {
 	// Check if git is available
 	if !commandExists("git") {
 		return fmt.Errorf("git is required but not found in PATH")
+	}
+
+	// Check if make is available
+	if !commandExists("make") {
+		return fmt.Errorf("make is required to build MuPDF but not found in PATH")
+	}
+
+	// Check if a C compiler is available
+	if !commandExists("gcc") && !commandExists("clang") && !commandExists("cc") {
+		return fmt.Errorf("a C compiler (gcc, clang, or cc) is required to build MuPDF but none was found in PATH")
 	}
 
 	// Check if MuPDF source exists

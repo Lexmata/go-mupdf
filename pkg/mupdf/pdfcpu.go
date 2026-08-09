@@ -12,9 +12,8 @@
 //   - PDF watermarking: Add text or image watermarks
 //   - PDF validation: Verify PDF structure and integrity
 //   - PDF optimization: Compress and optimize PDF files
-//   - Metadata manipulation: Read and modify PDF metadata
+//   - Metadata access: Read PDF metadata
 //   - Page operations: Rotate, extract, and manipulate pages
-//   - Attachment handling: Add and extract file attachments
 //
 // This integration allows users to leverage both MuPDF's rendering
 // capabilities and PDFCPU's manipulation features in a unified API.
@@ -24,6 +23,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -44,8 +46,94 @@ type PDFCPUConfig struct {
 }
 
 // DefaultPDFCPUConfig returns a default configuration for PDFCPU operations.
+//
+// The returned configuration wraps pdfcpu's default configuration
+// (model.NewDefaultConfiguration()) and has no watermark settings.
+//
+// Note: prior to v1.5.0 this returned a config whose Config field was
+// nil, which caused every operation to build its own default
+// configuration internally. The returned value is now shared by any
+// operation it is passed to; operations copy it before use, so pdfcpu
+// cannot modify it.
 func DefaultPDFCPUConfig() *PDFCPUConfig {
-	return &PDFCPUConfig{}
+	return &PDFCPUConfig{Config: model.NewDefaultConfiguration()}
+}
+
+// resolveConfig returns the pdfcpu configuration to use for an
+// operation. When the caller supplied one it is returned as a private
+// copy: pdfcpu mutates the configuration it is handed (api.Merge sets
+// both Cmd and ValidationMode, api.ExtractPages and api.Validate set
+// Cmd), so sharing the caller's pointer would silently alter settings
+// such as ValidationMode between calls.
+//
+// A shallow copy is sufficient: model.Configuration's only pointer
+// fields are UserPWNew and OwnerPWNew, which this package never sets.
+func resolveConfig(config *PDFCPUConfig) *model.Configuration {
+	if config == nil || config.Config == nil {
+		return model.NewDefaultConfiguration()
+	}
+
+	c := *config.Config
+
+	return &c
+}
+
+// sortExtractedPageFiles sorts files produced by pdfcpu page extraction
+// (named "<basename>_page_<N>.pdf") in ascending page-number order.
+// Paths that do not match the pattern sort after matching ones,
+// lexicographically.
+func sortExtractedPageFiles(paths []string) {
+	pageNr := func(path string) (int, bool) {
+		name := strings.TrimSuffix(filepath.Base(path), ".pdf")
+		idx := strings.LastIndex(name, "_page_")
+		if idx < 0 {
+			return 0, false
+		}
+		n, err := strconv.Atoi(name[idx+len("_page_"):])
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		ni, oki := pageNr(paths[i])
+		nj, okj := pageNr(paths[j])
+		if oki && okj {
+			return ni < nj
+		}
+		if oki != okj {
+			return oki
+		}
+		return paths[i] < paths[j]
+	})
+}
+
+// combineExtractedFiles produces outputPath from the files created by a
+// pdfcpu page extraction. A single extracted file is moved (or copied if
+// the rename fails) to outputPath; multiple extracted files are merged
+// into outputPath in ascending page order.
+func combineExtractedFiles(matches []string, outputPath string, conf *model.Configuration) error {
+	sortExtractedPageFiles(matches)
+
+	if len(matches) == 1 {
+		if err := os.Rename(matches[0], outputPath); err != nil {
+			// If rename fails, copy the file
+			data, readErr := os.ReadFile(matches[0])
+			if readErr == nil {
+				err = os.WriteFile(outputPath, data, 0644)
+			}
+			if err != nil {
+				return Error{message: fmt.Sprintf("failed to move extracted file: %v", err)}
+			}
+		}
+		return nil
+	}
+
+	if err := api.MergeCreateFile(matches, outputPath, false, conf); err != nil {
+		return Error{message: fmt.Sprintf("failed to merge extracted pages: %v", err)}
+	}
+
+	return nil
 }
 
 // MergePDFs combines multiple PDF files into a single PDF document.
@@ -81,10 +169,13 @@ func MergePDFs(inputPaths []string, outputPath string, config *PDFCPUConfig) err
 		return Error{message: "no input files provided for merging"}
 	}
 
-	// Validate all input files exist
+	// Validate all input files are accessible
 	for _, path := range inputPaths {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return Error{message: fmt.Sprintf("input file does not exist: %s", path)}
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				return Error{message: fmt.Sprintf("input file does not exist: %s", path)}
+			}
+			return Error{message: fmt.Sprintf("cannot access input file %s: %v", path, err)}
 		}
 	}
 
@@ -97,12 +188,7 @@ func MergePDFs(inputPaths []string, outputPath string, config *PDFCPUConfig) err
 	}
 
 	// Use pdfcpu API to merge
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
 	err := api.MergeCreateFile(inputPaths, outputPath, false, conf)
 	if err != nil {
@@ -134,6 +220,10 @@ func MergePDFs(inputPaths []string, outputPath string, config *PDFCPUConfig) err
 //   - "1-5" - page range (inclusive)
 //   - "1,3,5" - multiple pages/ranges
 //
+// Each page range produces exactly one output file named split_N.pdf
+// (N is the 1-based index of the range); ranges spanning multiple pages
+// are combined into a single file in ascending page order.
+//
 // Example:
 //
 //	outputFiles, err := SplitPDF("input.pdf", "output/", []string{"1-3", "5", "7-10"}, nil)
@@ -141,81 +231,54 @@ func MergePDFs(inputPaths []string, outputPath string, config *PDFCPUConfig) err
 //	    log.Fatalf("Failed to split PDF: %v", err)
 //	}
 func SplitPDF(inputPath string, outputDir string, pageRanges []string, config *PDFCPUConfig) ([]string, error) {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return nil, Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return nil, Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, Error{message: fmt.Sprintf("failed to create output directory: %v", err)}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
-	// Extract pages using pdfcpu - ExtractPagesFile extracts to a directory
-	// We'll extract each range separately
+	// Extract each range into its own fresh temp directory so the files
+	// produced for that range can be identified deterministically.
 	var outputFiles []string
-	baseName := filepath.Base(inputPath)
-	baseNameNoExt := baseName[:len(baseName)-len(filepath.Ext(baseName))]
 
 	for i, pageRange := range pageRanges {
 		outputPath := filepath.Join(outputDir, fmt.Sprintf("split_%d.pdf", i+1))
 
-		// Use ExtractPagesFile which creates files with pattern: inputname_pageRange.pdf
-		err := api.ExtractPagesFile(inputPath, outputDir, []string{pageRange}, conf)
+		tempExtractDir, err := os.MkdirTemp(outputDir, "split_extract_")
 		if err != nil {
-			return nil, Error{message: fmt.Sprintf("failed to extract pages %s: %v", pageRange, err)}
+			return nil, Error{message: fmt.Sprintf("failed to create temp directory: %v", err)}
 		}
 
-		// pdfcpu creates files with pattern: inputname_pageRange.pdf
-		// Handle different page range formats (e.g., "1-2" becomes "1-2", "1" stays "1")
-		createdFile := filepath.Join(outputDir, fmt.Sprintf("%s_%s.pdf", baseNameNoExt, pageRange))
+		err = func() error {
+			defer os.RemoveAll(tempExtractDir)
 
-		// Check if file exists with expected name
-		if _, err := os.Stat(createdFile); err == nil {
-			// Rename to our desired name
-			if err := os.Rename(createdFile, outputPath); err != nil {
-				// If rename fails, use the original file
-				outputFiles = append(outputFiles, createdFile)
-			} else {
-				outputFiles = append(outputFiles, outputPath)
+			// ExtractPagesFile writes one single-page PDF per extracted page
+			if err := api.ExtractPagesFile(inputPath, tempExtractDir, []string{pageRange}, conf); err != nil {
+				return Error{message: fmt.Sprintf("failed to extract pages %s: %v", pageRange, err)}
 			}
-		} else {
-			// File might have different naming - search for PDF files in outputDir
-			entries, err := os.ReadDir(outputDir)
-			if err == nil {
-				// Find the most recently created PDF file (likely the one we just created)
-				var foundFile string
-				var latestTime int64
-				for _, entry := range entries {
-					if !entry.IsDir() && filepath.Ext(entry.Name()) == ".pdf" {
-						info, err := entry.Info()
-						if err == nil {
-							if info.ModTime().Unix() > latestTime {
-								latestTime = info.ModTime().Unix()
-								foundFile = filepath.Join(outputDir, entry.Name())
-							}
-						}
-					}
-				}
-				if foundFile != "" {
-					// Rename to desired name
-					if err := os.Rename(foundFile, outputPath); err == nil {
-						outputFiles = append(outputFiles, outputPath)
-					} else {
-						outputFiles = append(outputFiles, foundFile)
-					}
-				} else {
-					return nil, Error{message: fmt.Sprintf("failed to find created file for page range %s", pageRange)}
-				}
-			} else {
-				return nil, Error{message: fmt.Sprintf("failed to find created file for page range %s: %v", pageRange, err)}
+
+			matches, err := filepath.Glob(filepath.Join(tempExtractDir, "*.pdf"))
+			if err != nil {
+				return Error{message: fmt.Sprintf("failed to list extracted files for page range %s: %v", pageRange, err)}
 			}
+			if len(matches) == 0 {
+				return Error{message: fmt.Sprintf("failed to find created file for page range %s", pageRange)}
+			}
+
+			return combineExtractedFiles(matches, outputPath, conf)
+		}()
+		if err != nil {
+			return nil, err
 		}
+
+		outputFiles = append(outputFiles, outputPath)
 	}
 
 	return outputFiles, nil
@@ -224,7 +287,8 @@ func SplitPDF(inputPath string, outputDir string, pageRanges []string, config *P
 // EncryptPDF adds password protection to a PDF file.
 //
 // This function encrypts a PDF with user and/or owner passwords,
-// restricting access based on the specified permissions.
+// restricting access based on the specified permissions. When a
+// configuration is supplied, the caller's configuration is not modified.
 //
 // Parameters:
 //   - inputPath: Path to the input PDF file
@@ -250,8 +314,11 @@ func SplitPDF(inputPath string, outputDir string, pageRanges []string, config *P
 //	    log.Fatalf("Failed to encrypt PDF: %v", err)
 //	}
 func EncryptPDF(inputPath, outputPath, userPassword, ownerPassword string, permissions model.PermissionFlags, config *PDFCPUConfig) error {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	// Ensure output directory exists
@@ -263,16 +330,19 @@ func EncryptPDF(inputPath, outputPath, userPassword, ownerPassword string, permi
 	}
 
 	// Create encryption configuration
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-		conf.UserPW = userPassword
-		conf.OwnerPW = ownerPassword
-		conf.Permissions = model.PermissionFlags(permissions)
-	} else {
-		// Use NewAESConfiguration for encryption
-		conf = model.NewAESConfiguration(userPassword, ownerPassword, 128)
-		conf.Permissions = model.PermissionFlags(permissions)
+	conf := resolveConfig(config)
+	conf.UserPW = userPassword
+	conf.OwnerPW = ownerPassword
+	conf.Permissions = permissions
+
+	// A caller-supplied configuration built from a zero-valued
+	// model.Configuration carries EncryptKeyLength == 0 and
+	// EncryptUsingAES == false, which would silently encrypt with RC4
+	// instead of AES. Normalize to pdfcpu's own defaults (AES-256) so
+	// supplying a configuration never weakens encryption.
+	if conf.EncryptKeyLength == 0 {
+		conf.EncryptUsingAES = true
+		conf.EncryptKeyLength = 256
 	}
 
 	err := api.EncryptFile(inputPath, outputPath, conf)
@@ -286,7 +356,8 @@ func EncryptPDF(inputPath, outputPath, userPassword, ownerPassword string, permi
 // DecryptPDF removes password protection from a PDF file.
 //
 // This function decrypts a password-protected PDF, creating an
-// unencrypted version. The password must be provided.
+// unencrypted version. The password must be provided. When a
+// configuration is supplied, the caller's configuration is not modified.
 //
 // Parameters:
 //   - inputPath: Path to the encrypted PDF file
@@ -304,8 +375,11 @@ func EncryptPDF(inputPath, outputPath, userPassword, ownerPassword string, permi
 //	    log.Fatalf("Failed to decrypt PDF: %v", err)
 //	}
 func DecryptPDF(inputPath, outputPath, password string, config *PDFCPUConfig) error {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	// Ensure output directory exists
@@ -316,16 +390,9 @@ func DecryptPDF(inputPath, outputPath, password string, config *PDFCPUConfig) er
 		}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-		conf.UserPW = password
-		conf.OwnerPW = password
-	} else {
-		conf = model.NewDefaultConfiguration()
-		conf.UserPW = password
-		conf.OwnerPW = password
-	}
+	conf := resolveConfig(config)
+	conf.UserPW = password
+	conf.OwnerPW = password
 
 	err := api.DecryptFile(inputPath, outputPath, conf)
 	if err != nil {
@@ -340,6 +407,9 @@ func DecryptPDF(inputPath, outputPath, password string, config *PDFCPUConfig) er
 // This function adds a watermark to all pages of a PDF. The watermark
 // can be text-based or image-based, with configurable position, opacity,
 // and rotation.
+//
+// config.WatermarkConfig, when set, takes precedence; watermarkText and
+// imagePath are ignored in that case.
 //
 // Parameters:
 //   - inputPath: Path to the input PDF file
@@ -358,8 +428,11 @@ func DecryptPDF(inputPath, outputPath, password string, config *PDFCPUConfig) er
 //	    log.Fatalf("Failed to add watermark: %v", err)
 //	}
 func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config *PDFCPUConfig) error {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	// Ensure output directory exists
@@ -370,12 +443,7 @@ func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config
 		}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
 	// Create watermark configuration
 	var wm *model.Watermark
@@ -409,9 +477,10 @@ func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config
 
 // ValidatePDF validates a PDF file for structure and integrity.
 //
-// This function performs comprehensive validation of a PDF file,
-// checking for structural issues, corruption, and compliance with
-// PDF specifications.
+// This function validates a PDF file for structural issues and
+// corruption using pdfcpu's default (relaxed) validation mode.
+// Strict mode can be requested by setting
+// config.Config.ValidationMode = model.ValidationStrict.
 //
 // Parameters:
 //   - pdfPath: Path to the PDF file to validate
@@ -420,7 +489,8 @@ func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config
 // Returns:
 //   - error: An error if validation fails or PDF is invalid
 //
-// Validation checks:
+// pdfcpu's validator checks the following, with the depth of each check
+// depending on the configured validation mode:
 //   - PDF header and structure
 //   - Cross-reference table integrity
 //   - Object references and streams
@@ -434,16 +504,14 @@ func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config
 //	    log.Fatalf("PDF validation failed: %v", err)
 //	}
 func ValidatePDF(pdfPath string, config *PDFCPUConfig) error {
-	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("PDF file does not exist: %s", pdfPath)}
+	if _, err := os.Stat(pdfPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("PDF file does not exist: %s", pdfPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", pdfPath, err)}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
 	err := api.ValidateFile(pdfPath, conf)
 	if err != nil {
@@ -470,8 +538,6 @@ func ValidatePDF(pdfPath string, config *PDFCPUConfig) error {
 //   - Stream compression
 //   - Duplicate object removal
 //   - Unused object cleanup
-//   - Font subsetting
-//   - Image compression
 //
 // Example:
 //
@@ -480,8 +546,11 @@ func ValidatePDF(pdfPath string, config *PDFCPUConfig) error {
 //	    log.Fatalf("Failed to optimize PDF: %v", err)
 //	}
 func OptimizePDF(inputPath, outputPath string, config *PDFCPUConfig) error {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	// Ensure output directory exists
@@ -492,12 +561,7 @@ func OptimizePDF(inputPath, outputPath string, config *PDFCPUConfig) error {
 		}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
 	err := api.OptimizeFile(inputPath, outputPath, conf)
 	if err != nil {
@@ -528,8 +592,11 @@ func OptimizePDF(inputPath, outputPath string, config *PDFCPUConfig) error {
 //	    log.Fatalf("Failed to rotate pages: %v", err)
 //	}
 func RotatePages(inputPath, outputPath string, pageRanges []string, rotation int, config *PDFCPUConfig) error {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	// Validate rotation angle
@@ -545,12 +612,7 @@ func RotatePages(inputPath, outputPath string, pageRanges []string, rotation int
 		}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
 	err := api.RotateFile(inputPath, outputPath, rotation, pageRanges, conf)
 	if err != nil {
@@ -563,7 +625,9 @@ func RotatePages(inputPath, outputPath string, pageRanges []string, rotation int
 // ExtractPages extracts specific pages from a PDF to a new file.
 //
 // This function creates a new PDF containing only the specified pages
-// from the source PDF.
+// from the source PDF. When the page ranges select multiple pages, the
+// extracted pages are combined into a single output PDF in ascending
+// page order.
 //
 // Parameters:
 //   - inputPath: Path to the input PDF file
@@ -581,8 +645,11 @@ func RotatePages(inputPath, outputPath string, pageRanges []string, rotation int
 //	    log.Fatalf("Failed to extract pages: %v", err)
 //	}
 func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDFCPUConfig) error {
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+	if _, err := os.Stat(inputPath); err != nil {
+		if os.IsNotExist(err) {
+			return Error{message: fmt.Sprintf("input file does not exist: %s", inputPath)}
+		}
+		return Error{message: fmt.Sprintf("cannot access input file %s: %v", inputPath, err)}
 	}
 
 	// Ensure output directory exists
@@ -593,57 +660,52 @@ func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDF
 		}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
-	// ExtractPagesFile extracts to a directory, but we want a single file
-	// So we'll extract to a temp dir and move the file
-	tempDir := filepath.Dir(outputPath)
-	tempExtractDir := filepath.Join(tempDir, "temp_extract")
-	if err := os.MkdirAll(tempExtractDir, 0755); err != nil {
+	// ExtractPagesFile extracts to a directory, but we want a single
+	// file, so extract into a fresh private temp directory and combine
+	// the results. A unique directory (rather than a fixed name) keeps
+	// concurrent calls that share an output directory from globbing and
+	// merging each other's extracted pages.
+	tempExtractDir, err := os.MkdirTemp(filepath.Dir(outputPath), "extract_")
+	if err != nil {
 		return Error{message: fmt.Sprintf("failed to create temp directory: %v", err)}
 	}
 	defer os.RemoveAll(tempExtractDir)
 
-	err := api.ExtractPagesFile(inputPath, tempExtractDir, pageRanges, conf)
-	if err != nil {
+	if err := api.ExtractPagesFile(inputPath, tempExtractDir, pageRanges, conf); err != nil {
 		return Error{message: fmt.Sprintf("pdfcpu page extraction failed: %v", err)}
 	}
 
-	// Find the extracted file and move it to outputPath
-	// pdfcpu creates files with pattern inputname_pageRange.pdf
-	// For multiple ranges, it might create multiple files, so we take the first
-	matches, _ := filepath.Glob(filepath.Join(tempExtractDir, "*.pdf"))
-	if len(matches) > 0 {
-		if err := os.Rename(matches[0], outputPath); err != nil {
-			// If rename fails, copy the file
-			data, readErr := os.ReadFile(matches[0])
-			if readErr == nil {
-				err = os.WriteFile(outputPath, data, 0644)
-			}
-			if err != nil {
-				return Error{message: fmt.Sprintf("failed to move extracted file: %v", err)}
-			}
-		}
-	} else {
+	// Collect the extracted files and combine them into outputPath.
+	// pdfcpu creates one single-page PDF per extracted page, named
+	// inputname_page_N.pdf; multiple pages are merged in ascending
+	// page order.
+	matches, err := filepath.Glob(filepath.Join(tempExtractDir, "*.pdf"))
+	if err != nil {
+		return Error{message: fmt.Sprintf("failed to list extracted files: %v", err)}
+	}
+	if len(matches) == 0 {
 		return Error{message: "no files were extracted"}
 	}
 
-	return nil
+	return combineExtractedFiles(matches, outputPath, conf)
 }
 
 // GetPDFInfo retrieves metadata and information about a PDF file.
 //
-// This function extracts document-level information including:
-//   - Page count
-//   - PDF version
-//   - Document metadata (title, author, subject, etc.)
-//   - Encryption status
-//   - File size
+// This function extracts document-level information. The returned map
+// contains the following keys:
+//   - "pageCount": number of pages
+//   - "pdfVersion": PDF version string
+//   - "title", "author", "subject", "creator", "producer", "keywords",
+//     "creationDate", "modDate": document metadata (each present only if
+//     set in the document; unreadable metadata fields are omitted)
+//   - "encrypted": whether the PDF is encrypted
+//   - "fileSize": file size in bytes
+//
+// Keys may be added in future minor releases; callers should not assume
+// the set is closed.
 //
 // Parameters:
 //   - pdfPath: Path to the PDF file
@@ -661,16 +723,14 @@ func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDF
 //	}
 //	fmt.Printf("Page count: %v\n", info["pageCount"])
 func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, error) {
-	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
-		return nil, Error{message: fmt.Sprintf("PDF file does not exist: %s", pdfPath)}
+	if _, err := os.Stat(pdfPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, Error{message: fmt.Sprintf("PDF file does not exist: %s", pdfPath)}
+		}
+		return nil, Error{message: fmt.Sprintf("cannot access input file %s: %v", pdfPath, err)}
 	}
 
-	var conf *model.Configuration
-	if config != nil && config.Config != nil {
-		conf = config.Config
-	} else {
-		conf = model.NewDefaultConfiguration()
-	}
+	conf := resolveConfig(config)
 
 	// Use pdfcpu's InfoFile to get PDF information
 	// We'll read the context to get basic info
@@ -685,13 +745,23 @@ func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, e
 		return nil, Error{message: fmt.Sprintf("failed to read PDF context: %v", err)}
 	}
 
+	// ReadContext does not populate PageCount; walk the page tree explicitly.
+	// PageCount is reached through the embedded *XRefTable, so a nil table
+	// means there is no count to report.
+	if ctx.XRefTable == nil {
+		return nil, Error{message: "PDF context has no cross-reference table"}
+	}
+	if err := ctx.XRefTable.EnsurePageCount(); err != nil {
+		return nil, Error{message: fmt.Sprintf("failed to determine page count: %v", err)}
+	}
+
 	info := make(map[string]interface{})
 	info["pageCount"] = ctx.PageCount
 	info["pdfVersion"] = ctx.VersionString()
 
 	// Get document info dict if available
 	// Access Info through the XRefTable - need to dereference IndirectRef
-	if ctx.XRefTable != nil && ctx.XRefTable.Info != nil {
+	if ctx.XRefTable.Info != nil {
 		infoDict, err := ctx.XRefTable.DereferenceDict(ctx.XRefTable.Info)
 		if err == nil && infoDict != nil {
 			// Extract common metadata fields
@@ -715,6 +785,26 @@ func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, e
 			if creatorObj, found := infoDict.Find("Creator"); found {
 				if creator, err := ctx.XRefTable.DereferenceStringOrHexLiteral(creatorObj, version, nil); err == nil {
 					info["creator"] = creator
+				}
+			}
+			if producerObj, found := infoDict.Find("Producer"); found {
+				if producer, err := ctx.XRefTable.DereferenceStringOrHexLiteral(producerObj, version, nil); err == nil {
+					info["producer"] = producer
+				}
+			}
+			if keywordsObj, found := infoDict.Find("Keywords"); found {
+				if keywords, err := ctx.XRefTable.DereferenceStringOrHexLiteral(keywordsObj, version, nil); err == nil {
+					info["keywords"] = keywords
+				}
+			}
+			if creationDateObj, found := infoDict.Find("CreationDate"); found {
+				if creationDate, err := ctx.XRefTable.DereferenceStringOrHexLiteral(creationDateObj, version, nil); err == nil {
+					info["creationDate"] = creationDate
+				}
+			}
+			if modDateObj, found := infoDict.Find("ModDate"); found {
+				if modDate, err := ctx.XRefTable.DereferenceStringOrHexLiteral(modDateObj, version, nil); err == nil {
+					info["modDate"] = modDate
 				}
 			}
 		}

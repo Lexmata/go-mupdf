@@ -1,9 +1,11 @@
 package mupdf
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 )
 
@@ -24,6 +26,8 @@ func TestContextErrorPaths(t *testing.T) {
 }
 
 func TestDocumentErrorPaths(t *testing.T) {
+	requireMuPDF(t)
+
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
@@ -36,12 +40,18 @@ func TestDocumentErrorPaths(t *testing.T) {
 		t.Error("Expected error when opening non-existent file")
 	}
 
-	// Test CountPages with error (covers 66.7% line in CountPages)
-	doc, err := OpenDocument(ctx, "non-existent-file.pdf")
-	if err == nil {
-		defer doc.Close()
-		count := doc.CountPages()
-		t.Logf("Page count: %d", count)
+	// CountPages after Close must return the documented safe value of 0
+	pdfPath := createTestPDF(t)
+	doc, err := OpenDocument(ctx, pdfPath)
+	if err != nil {
+		t.Fatalf("Failed to open document: %v", err)
+	}
+	if got := doc.CountPages(); got != 1 {
+		t.Errorf("Expected 1 page before Close, got %d", got)
+	}
+	doc.Close()
+	if got := doc.CountPages(); got != 0 {
+		t.Errorf("Expected CountPages to return 0 after Close, got %d", got)
 	}
 }
 
@@ -135,8 +145,9 @@ func TestPDFDocumentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open PDF document directly: %v", err)
 	}
-	// PDFDocument doesn't have Close method, it uses the underlying document
+	// PDFDocument holds a kept reference, so it must be closed explicitly
 	t.Logf("Opened PDF document directly: %+v", pdfDoc2)
+	pdfDoc2.Close()
 }
 
 func TestPDFWriterComprehensive(t *testing.T) {
@@ -213,7 +224,11 @@ func TestPDFWriterComprehensive(t *testing.T) {
 	}
 }
 
-func TestMemoryManagementEdgeCases(t *testing.T) {
+// TestCreateCloseEdgeCases exercises creating objects and closing them
+// immediately (it does not measure memory usage)
+func TestCreateCloseEdgeCases(t *testing.T) {
+	requireMuPDF(t)
+
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
@@ -231,12 +246,18 @@ func TestMemoryManagementEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to add page: %v", err)
 	}
+	if page == nil {
+		t.Fatal("AddPage returned nil page")
+	}
 	page.Close()
 
 	// Create object and close immediately
 	obj, err := writer.NewPDFObject("test")
 	if err != nil {
 		t.Fatalf("Failed to create object: %v", err)
+	}
+	if obj == nil {
+		t.Fatal("NewPDFObject returned nil object")
 	}
 	obj.Drop()
 
@@ -247,25 +268,52 @@ func TestMemoryManagementEdgeCases(t *testing.T) {
 	runtime.GC()
 }
 
+// TestConcurrentSafety verifies the supported concurrency pattern: each
+// goroutine creates, uses, and drops its own Context. Sharing a Context
+// across goroutines is not supported.
 func TestConcurrentSafety(t *testing.T) {
-	// Test creating multiple contexts concurrently
-	const numContexts = 5
-	contexts := make([]*Context, numContexts)
+	requireMuPDF(t)
 
-	for i := 0; i < numContexts; i++ {
-		ctx, err := NewContext()
-		if err != nil {
-			t.Fatalf("Failed to create context %d: %v", i, err)
-		}
-		contexts[i] = ctx
+	const numGoroutines = 5
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	errs := make(chan error, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+
+			// Each goroutine creates its own Context
+			ctx, err := NewContext()
+			if err != nil {
+				errs <- fmt.Errorf("goroutine %d: failed to create context: %w", id, err)
+				return
+			}
+			defer ctx.Drop()
+
+			// Perform operations with this goroutine's own context
+			writer, err := NewPDFWriter(ctx)
+			if err != nil {
+				errs <- fmt.Errorf("goroutine %d: failed to create PDF writer: %w", id, err)
+				return
+			}
+			defer writer.Close()
+
+			page, err := writer.AddPage(595, 842)
+			if err != nil {
+				errs <- fmt.Errorf("goroutine %d: failed to add page: %w", id, err)
+				return
+			}
+			page.Close()
+		}(i)
 	}
 
-	// Close all contexts
-	for i, ctx := range contexts {
-		if ctx != nil {
-			ctx.Drop()
-			t.Logf("Closed context %d", i)
-		}
+	// Wait for all goroutines, then assert none reported an error
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }
 

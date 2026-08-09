@@ -11,16 +11,7 @@ import (
 // TestComprehensive is a comprehensive test that exercises multiple aspects of the library
 func TestComprehensive(t *testing.T) {
 	requireMuPDF(t)
-	// Skip in CI/CD environments and Docker due to concurrency issues that cause segfaults
-	// This test has known race conditions with MuPDF's internal state
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping TestComprehensive in CI due to concurrency issues")
-	}
-	// Also skip when running in Docker containers (common CI/CD pattern)
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		t.Skip("Skipping TestComprehensive in Docker due to concurrency issues")
-	}
-	skipIfCIorShort(t)
+	skipIfShort(t)
 
 	// Create context
 	ctx, err := NewContext()
@@ -40,9 +31,9 @@ func TestComprehensive(t *testing.T) {
 	t.Log("Phase 2: Processing PDFs")
 	processPDFs(t, ctx, pdfPaths)
 
-	// Phase 3: Concurrent processing
+	// Phase 3: Concurrent processing (each worker creates its own context)
 	t.Log("Phase 3: Concurrent processing")
-	concurrentProcessing(t, ctx, pdfPaths)
+	concurrentProcessing(t, pdfPaths)
 
 	// Phase 4: Error handling and recovery
 	t.Log("Phase 4: Error handling and recovery")
@@ -198,68 +189,78 @@ func processPDFs(t *testing.T, ctx *Context, pdfPaths []string) {
 	}
 }
 
-// Helper function for concurrent processing
-func concurrentProcessing(t *testing.T, ctx *Context, pdfPaths []string) {
+// Helper function for concurrent processing. A Context is not thread-safe
+// and must not be shared across goroutines, so each worker creates its own
+// Context and opens the document itself.
+func concurrentProcessing(t *testing.T, pdfPaths []string) {
+	// Expected page counts for the PDFs created by createMultiplePDFs
+	expectedPages := []int{1, 3, 0}
+	if len(pdfPaths) != len(expectedPages) {
+		t.Fatalf("Expected %d PDF paths, got %d", len(expectedPages), len(pdfPaths))
+	}
+
 	// Number of concurrent workers
 	numWorkers := 5
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
 
-	// Create a mutex to protect context access
-	var mu sync.Mutex
-
-	// Process PDFs concurrently
+	// Process PDFs concurrently, one context per worker
 	for i := 0; i < numWorkers; i++ {
 		go func(id int) {
 			defer wg.Done()
 
 			// Select a PDF to process (cycling through available PDFs)
-			pdfPath := pdfPaths[id%len(pdfPaths)]
+			pdfIdx := id % len(pdfPaths)
+			pdfPath := pdfPaths[pdfIdx]
 
-			// Open document
-			mu.Lock()
+			// Each worker creates its own Context
+			ctx, err := NewContext()
+			if err != nil {
+				t.Errorf("Worker %d: Failed to create context: %v", id, err)
+				return
+			}
+			defer ctx.Drop()
+
+			// Open document with this worker's own context
 			doc, err := OpenDocument(ctx, pdfPath)
-			mu.Unlock()
-
 			if err != nil {
 				t.Errorf("Worker %d: Failed to open document: %v", id, err)
 				return
 			}
 			defer doc.Close()
 
-			// Get page count
+			// Assert page count matches what createMultiplePDFs produced
 			pageCount := doc.CountPages()
+			if pageCount != expectedPages[pdfIdx] {
+				t.Errorf("Worker %d: Expected %d pages in %s, got %d",
+					id, expectedPages[pdfIdx], pdfPath, pageCount)
+				return
+			}
 
 			// Process each page
 			for j := 0; j < pageCount; j++ {
 				// Load page
-				mu.Lock()
 				page, err := doc.LoadPage(j)
-				mu.Unlock()
-
 				if err != nil {
 					t.Errorf("Worker %d: Failed to load page %d: %v", id, j, err)
 					return
 				}
 
-				// Get page bounds
+				// Assert page bounds are valid
 				bounds := page.Bound()
-				t.Logf("Worker %d: Page %d bounds: %+v", id, j, bounds)
+				if bounds.X1 <= bounds.X0 || bounds.Y1 <= bounds.Y0 {
+					t.Errorf("Worker %d: Page %d has invalid bounds: %+v", id, j, bounds)
+				}
 
 				// Extract text
-				mu.Lock()
 				text, err := page.ExtractText()
-				mu.Unlock()
-
 				if err != nil {
 					t.Errorf("Worker %d: Failed to extract text from page %d: %v", id, j, err)
 					page.Close()
 					return
 				}
 
-				// Get text content
-				content := text.String()
-				t.Logf("Worker %d: Page %d text length: %d", id, j, len(content))
+				_ = text.String()
 
 				// Clean up
 				text.Close()
@@ -323,11 +324,11 @@ func errorHandlingAndRecovery(t *testing.T, ctx *Context, dir string) {
 	}
 	defer doc.Close()
 
-	// Check page count
+	// Check page count: the writer added exactly one page
 	pageCount := doc.CountPages()
-	t.Logf("Document has %d page(s)", pageCount)
-	// Note: Currently, the PDF creation process is not adding pages correctly.
-	// This is a known issue that needs further investigation.
+	if pageCount != 1 {
+		t.Errorf("Expected 1 page in PDF created after error, got %d", pageCount)
+	}
 }
 
 // Helper function for resource cleanup
@@ -337,31 +338,24 @@ func resourceCleanup(t *testing.T, ctx *Context, pdfPath string) {
 	if err != nil {
 		t.Fatalf("Failed to open document for cleanup test: %v", err)
 	}
+	defer doc.Close()
 
 	// Load page
 	page, err := doc.LoadPage(0)
 	if err != nil {
 		t.Fatalf("Failed to load page for cleanup test: %v", err)
-		doc.Close()
-		return
 	}
+	defer page.Close()
 
 	// Extract text
 	text, err := page.ExtractText()
 	if err != nil {
 		t.Fatalf("Failed to extract text for cleanup test: %v", err)
-		page.Close()
-		doc.Close()
-		return
 	}
+	defer text.Close()
 
 	// Get text content
 	_ = text.String()
-
-	// Clean up in correct order
-	text.Close()
-	page.Close()
-	doc.Close()
 
 	// Run garbage collection
 	runtime.GC()

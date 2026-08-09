@@ -2,6 +2,15 @@
 
 # CI Setup Script for Go MuPDF Wrapper
 # This script sets up the build environment for CI/CD pipelines
+#
+# NOTE: The exported Go environment variables only persist in your shell if
+# this script is SOURCED, not executed:
+#     source scripts/ci-setup.sh
+# Running it directly (./scripts/ci-setup.sh) still installs dependencies and
+# builds MuPDF, but the exports are lost when the script exits.
+#
+# NOTE: This script is not currently invoked by bitbucket-pipelines.yml --
+# it is intended for local/manual environment setup.
 
 set -e
 
@@ -40,10 +49,11 @@ install_system_deps() {
 # Set up Go environment
 setup_go_env() {
     echo "Setting up Go environment..."
-    export GO111MODULE=on
-    export CGO_ENABLED=1
-    export GOOS=linux
-    export GOARCH=amd64
+    # Respect values already set by the caller (e.g. for cross-compilation)
+    export GO111MODULE="${GO111MODULE:-on}"
+    export CGO_ENABLED="${CGO_ENABLED:-1}"
+    export GOOS="${GOOS:-linux}"
+    export GOARCH="${GOARCH:-amd64}"
     
     # Verify Go installation
     go version
@@ -74,7 +84,7 @@ build_mupdf() {
     fi
     
     echo "Starting MuPDF build..."
-    make -j$(nproc) libs
+    make -j$(nproc) libs USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release
     
     # Verify build
     if [ -f "build/release/libmupdf.a" ]; then
@@ -110,9 +120,14 @@ verify_environment() {
         exit 1
     fi
     
-    # Check MuPDF library
+    # Check MuPDF libraries
     if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
-        echo "Error: MuPDF library not found"
+        echo "Error: MuPDF library (libmupdf.a) not found"
+        exit 1
+    fi
+
+    if [ ! -f "third_party/mupdf/build/release/libmupdf-third.a" ]; then
+        echo "Error: MuPDF third-party library (libmupdf-third.a) not found"
         exit 1
     fi
     

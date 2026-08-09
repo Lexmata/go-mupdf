@@ -6,11 +6,9 @@ import (
 	"testing"
 )
 
-// Final tests to achieve 100% coverage by targeting the most specific uncovered lines
+// Tests for PDF object creation and combined API operations.
 
 func TestNewPDFObjectComplete(t *testing.T) {
-	// Test NewPDFObject variations - need to hit remaining 14.3% and 9.1%
-
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
@@ -23,68 +21,61 @@ func TestNewPDFObjectComplete(t *testing.T) {
 	}
 	defer writer.Close()
 
-	// Test edge cases that might hit different code paths
+	unsupportedPointer := new(int)
+
 	testCases := []struct {
-		name  string
-		value interface{}
+		name    string
+		value   interface{}
+		wantErr bool
 	}{
-		{"nil", nil},
-		{"bool_true", true},
-		{"bool_false", false},
-		{"int_zero", int(0)},
-		{"int_positive", int(42)},
-		{"int_negative", int(-42)},
-		{"int_max", int(2147483647)},
-		{"int_min", int(-2147483648)},
-		{"float_zero", float64(0.0)},
-		{"float_positive", float64(3.14159)},
-		{"float_negative", float64(-3.14159)},
-		{"float_very_small", float64(1e-10)},
-		{"float_very_large", float64(1e10)},
-		{"float_infinity", math.Inf(1)},      // Test positive infinity
-		{"float_neg_infinity", math.Inf(-1)}, // Test negative infinity
-		{"string_empty", ""},
-		{"string_simple", "hello"},
-		{"string_unicode", "Hello 世界 🌍"},
-		{"string_special_chars", "\n\r\t\\\"/"},
-		{"string_null_bytes", "\x00\x01\x02"},
-		{"string_very_long", string(make([]byte, 10000))}, // 10KB string
+		{"nil", nil, false},
+		{"bool_true", true, false},
+		{"bool_false", false, false},
+		{"int_zero", int(0), false},
+		{"int_positive", int(42), false},
+		{"int_negative", int(-42), false},
+		{"int_max", int(2147483647), false},
+		{"int_min", int(-2147483648), false},
+		{"float_zero", float64(0.0), false},
+		{"float_positive", float64(3.14159), false},
+		{"float_negative", float64(-3.14159), false},
+		{"float_very_small", float64(1e-10), false},
+		{"float_very_large", float64(1e10), false},
+		// PDF has no Inf literal, but NewPDFObject currently forwards Inf
+		// to pdf_new_real without validation, so creation succeeds.
+		// Candidate for future validation.
+		{"float_infinity", math.Inf(1), false},
+		{"float_neg_infinity", math.Inf(-1), false},
+		{"string_empty", "", false},
+		{"string_simple", "hello", false},
+		{"string_unicode", "Hello 世界 🌍", false},
+		{"string_special_chars", "\n\r\t\\\"/", false},
+		{"string_null_bytes", "\x00\x01\x02", false},
+		{"string_very_long", string(make([]byte, 10000)), false}, // 10KB string
+		// Unsupported types must be rejected.
+		{"unsupported_slice", []int{1, 2, 3}, true},
+		{"unsupported_map", map[string]int{"a": 1}, true},
+		{"unsupported_struct", struct{ X int }{42}, true},
+		{"unsupported_channel", make(chan int), true},
+		{"unsupported_function", func() {}, true},
+		{"unsupported_complex", complex(1, 2), true},
+		{"unsupported_pointer", unsupportedPointer, true},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			obj, err := writer.NewPDFObject(tc.value)
+			if tc.wantErr {
+				if err == nil {
+					obj.Drop()
+					t.Errorf("Expected error for unsupported type %s", tc.name)
+				}
+				return
+			}
 			if err != nil {
-				t.Logf("Error creating object for %s: %v", tc.name, err)
-			} else {
-				obj.Drop()
-				t.Logf("Successfully created object for %s", tc.name)
+				t.Fatalf("NewPDFObject(%s): %v", tc.name, err)
 			}
-		})
-	}
-
-	// Test unsupported types to hit error paths
-	unsupportedCases := []struct {
-		name  string
-		value interface{}
-	}{
-		{"slice", []int{1, 2, 3}},
-		{"map", map[string]int{"a": 1}},
-		{"struct", struct{ X int }{42}},
-		{"channel", make(chan int)},
-		{"function", func() {}},
-		{"complex", complex(1, 2)},
-		{"pointer", &testCases[0]},
-	}
-
-	for _, tc := range unsupportedCases {
-		t.Run("unsupported_"+tc.name, func(t *testing.T) {
-			_, err := writer.NewPDFObject(tc.value)
-			if err == nil {
-				t.Errorf("Expected error for unsupported type %s", tc.name)
-			} else {
-				t.Logf("Got expected error for %s: %v", tc.name, err)
-			}
+			obj.Drop()
 		})
 	}
 }
@@ -104,10 +95,8 @@ func TestSkipFunctionsWithShortMode(t *testing.T) {
 }
 
 func TestCreateTestPDFExtensive(t *testing.T) {
-	// Test createTestPDF exhaustively to hit the remaining 34.6%
-
-	// Test creating many PDFs to exercise all code paths
-	for i := 0; i < 50; i++ {
+	// Repeated createTestPDF calls must produce existing files.
+	for i := 0; i < 3; i++ {
 		pdf := createTestPDF(t)
 		if pdf == "" {
 			t.Errorf("createTestPDF %d returned empty path", i)
@@ -122,105 +111,104 @@ func TestCreateTestPDFExtensive(t *testing.T) {
 }
 
 func TestRequireMuPDFExtensive(t *testing.T) {
-	// Test requireMuPDF with extensive calls to hit remaining 44.4%
-
-	// Call requireMuPDF many times to exercise all branches
-	for i := 0; i < 100; i++ {
+	// requireMuPDF must be safe to call repeatedly.
+	for i := 0; i < 3; i++ {
 		requireMuPDF(t)
 	}
 }
 
 func TestAllCombinationsForCoverage(t *testing.T) {
-	// This test combines multiple operations to ensure we hit edge cases
-
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
 	}
 	defer ctx.Drop()
 
-	// Test document operations in various combinations
+	// Document operations in various combinations.
 	pdfPath := createTestPDF(t)
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 3; i++ {
 		doc, err := OpenDocument(ctx, pdfPath)
 		if err != nil {
 			t.Fatalf("Failed to open document %d: %v", i, err)
 		}
 
-		// Call all methods to ensure coverage
 		count := doc.CountPages()
-		t.Logf("Document %d page count: %d", i, count)
+		if count == 0 {
+			t.Fatalf("Document %d: expected at least one page", i)
+		}
 
 		pdfDoc, err := doc.AsPDFDocument()
-		if err == nil {
-			pdfCount := pdfDoc.CountPages()
-			t.Logf("PDF document %d page count: %d", i, pdfCount)
-
-			if pdfCount > 0 {
-				page, err := pdfDoc.LoadPage(0)
-				if err == nil {
-					bounds := page.Bound()
-					t.Logf("PDF page %d bounds: %+v", i, bounds)
-					page.Close()
-				}
-			}
+		if err != nil {
+			t.Fatalf("Document %d: AsPDFDocument failed: %v", i, err)
+		}
+		if pdfCount := pdfDoc.CountPages(); pdfCount != count {
+			t.Errorf("Document %d: PDF page count = %d, want %d", i, pdfCount, count)
 		}
 
-		if count > 0 {
-			page, err := doc.LoadPage(0)
-			if err == nil {
-				bounds := page.Bound()
-				t.Logf("Page %d bounds: %+v", i, bounds)
-
-				text, err := page.ExtractText()
-				if err == nil {
-					content := text.String()
-					t.Logf("Page %d text length: %d", i, len(content))
-					text.Close()
-				}
-
-				page.Close()
-			}
+		pdfPage, err := pdfDoc.LoadPage(0)
+		if err != nil {
+			t.Fatalf("Document %d: PDF LoadPage failed: %v", i, err)
 		}
+		pdfPage.Bound()
+		pdfPage.Close()
+
+		page, err := doc.LoadPage(0)
+		if err != nil {
+			t.Fatalf("Document %d: LoadPage failed: %v", i, err)
+		}
+		page.Bound()
+
+		text, err := page.ExtractText()
+		if err != nil {
+			t.Fatalf("Document %d: ExtractText failed: %v", i, err)
+		}
+		if s1, s2 := text.String(), text.String(); s1 != s2 {
+			t.Errorf("Document %d: inconsistent text: %d vs %d chars", i, len(s1), len(s2))
+		}
+		text.Close()
+		page.Close()
 
 		doc.Close()
 	}
 
-	// Test PDF writer operations
-	for i := 0; i < 20; i++ {
+	// PDF writer operations: every page-addition variant must succeed.
+	for i := 0; i < 2; i++ {
 		writer, err := NewPDFWriter(ctx)
 		if err != nil {
 			t.Fatalf("Failed to create writer %d: %v", i, err)
 		}
 
-		// Add pages using different methods
-		page1, err := writer.AddPage(612, 792)
-		if err == nil {
-			page1.Close()
+		adds := []struct {
+			name string
+			add  func(float64, float64) (*PDFPage, error)
+			w, h float64
+		}{
+			{"AddPage", writer.AddPage, 612, 792},
+			{"SimpleAddPage", writer.SimpleAddPage, 595, 842},
+			{"ImprovedAddPage", writer.ImprovedAddPage, 420, 595},
+			{"FixedAddPage", writer.FixedAddPage, 297, 420},
 		}
 
-		page2, err := writer.SimpleAddPage(595, 842)
-		if err == nil {
-			page2.Close()
-		}
-
-		page3, err := writer.ImprovedAddPage(420, 595)
-		if err == nil {
-			page3.Close()
-		}
-
-		page4, err := writer.FixedAddPage(297, 420)
-		if err == nil {
-			page4.Close()
-		}
-
-		// Create PDF objects
-		for j := 0; j < 10; j++ {
-			obj, err := writer.NewPDFObject(j)
-			if err == nil {
-				obj.Drop()
+		for _, a := range adds {
+			page, err := a.add(a.w, a.h)
+			if err != nil {
+				t.Fatalf("Writer %d: %s failed: %v", i, a.name, err)
 			}
+			page.Close()
+		}
+
+		if got := writer.DebugCountPages(); got != len(adds) {
+			t.Errorf("Writer %d: page count = %d, want %d", i, got, len(adds))
+		}
+
+		for j := 0; j < 3; j++ {
+			obj, err := writer.NewPDFObject(j)
+			if err != nil {
+				t.Errorf("Writer %d: NewPDFObject(%d) failed: %v", i, j, err)
+				continue
+			}
+			obj.Drop()
 		}
 
 		writer.Close()
@@ -228,15 +216,13 @@ func TestAllCombinationsForCoverage(t *testing.T) {
 }
 
 func TestErrorPathsComprehensive(t *testing.T) {
-	// Test all error paths systematically
-
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
 	}
 	defer ctx.Drop()
 
-	// Test with invalid files to trigger error paths
+	// Invalid files must fail to open through both APIs.
 	invalidFiles := []string{
 		"",
 		"non-existent.pdf",
@@ -245,18 +231,12 @@ func TestErrorPathsComprehensive(t *testing.T) {
 	}
 
 	for _, file := range invalidFiles {
-		_, err := OpenDocument(ctx, file)
-		if err == nil {
-			t.Logf("Unexpectedly succeeded opening %s", file)
-		} else {
-			t.Logf("Got expected error for %s: %v", file, err)
+		if _, err := OpenDocument(ctx, file); err == nil {
+			t.Errorf("OpenDocument(%q): expected error, got nil", file)
 		}
 
-		_, err = OpenPDFDocument(ctx, file)
-		if err == nil {
-			t.Logf("Unexpectedly succeeded opening PDF %s", file)
-		} else {
-			t.Logf("Got expected error for PDF %s: %v", file, err)
+		if _, err := OpenPDFDocument(ctx, file); err == nil {
+			t.Errorf("OpenPDFDocument(%q): expected error, got nil", file)
 		}
 	}
 }

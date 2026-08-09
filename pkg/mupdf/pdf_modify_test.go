@@ -354,8 +354,10 @@ func TestPDFOverwrite(t *testing.T) {
 	}
 }
 
-// TestPDFSaveToNonexistentDirectory tests saving a PDF to a directory that doesn't exist
-func TestPDFSaveToNonexistentDirectory(t *testing.T) {
+// TestPDFSaveToNewlyCreatedDirectory tests saving a PDF to a directory created
+// just before the save. The genuine missing-directory error case is covered by
+// memory_test.go and types_test.go (SaveToInvalidLocation).
+func TestPDFSaveToNewlyCreatedDirectory(t *testing.T) {
 	requireMuPDF(t)
 
 	// Create context
@@ -378,13 +380,13 @@ func TestPDFSaveToNonexistentDirectory(t *testing.T) {
 		t.Fatalf("Failed to add page: %v", err)
 	}
 
-	// Try to save to a non-existent directory
+	// Save into a directory created immediately before the save
 	dir := testDataDir(t)
-	nonExistentDir := filepath.Join(dir, "non_existent_directory")
-	pdfPath := filepath.Join(nonExistentDir, "test.pdf")
+	newDir := filepath.Join(dir, "newly_created_directory")
+	pdfPath := filepath.Join(newDir, "test.pdf")
 
 	// Create the directory
-	err = os.MkdirAll(nonExistentDir, 0755)
+	err = os.MkdirAll(newDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create directory: %v", err)
 	}

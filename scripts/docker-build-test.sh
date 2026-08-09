@@ -25,12 +25,26 @@ if [ ! -f "Dockerfile" ]; then
 fi
 echo "✅ Dockerfile found"
 
-# Validate Dockerfile syntax (basic check)
-if docker build --dry-run -f Dockerfile . 2>&1 | grep -q "error"; then
-    echo "❌ Dockerfile syntax error detected"
-    exit 1
+# Validate Dockerfile syntax with the best available validator
+if docker buildx version > /dev/null 2>&1 && docker buildx build --help 2>/dev/null | grep -q -- '--check'; then
+    echo "Validating Dockerfile with 'docker buildx build --check'..."
+    if docker buildx build --check -f Dockerfile .; then
+        echo "✅ Dockerfile syntax is valid (buildx --check)"
+    else
+        echo "❌ Dockerfile syntax error detected"
+        exit 1
+    fi
+elif command -v hadolint > /dev/null 2>&1; then
+    echo "Validating Dockerfile with hadolint..."
+    if hadolint Dockerfile; then
+        echo "✅ Dockerfile passed hadolint"
+    else
+        echo "❌ hadolint reported Dockerfile issues"
+        exit 1
+    fi
+else
+    echo "⚠️  Dockerfile syntax validation skipped (no validator available: needs 'docker buildx build --check' or hadolint)"
 fi
-echo "✅ Dockerfile syntax appears valid"
 
 # Check docker-compose if available
 if command -v docker-compose &> /dev/null; then
