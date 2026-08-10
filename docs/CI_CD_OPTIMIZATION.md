@@ -496,5 +496,5 @@ For issues or questions:
 
 **Last Updated**: 2025
 **Pipeline Version**: v2.0 (Optimized)
-**MuPDF Version**: 1.26.3
+**MuPDF Version**: 1.27.2
 

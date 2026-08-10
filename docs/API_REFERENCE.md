@@ -603,7 +603,7 @@ func GetVersion() string
 Returns the version string of the underlying MuPDF library.
 
 **Returns:**
-- `string`: Version string (e.g., "1.26.3")
+- `string`: Version string (e.g., "1.27.2")
 
 **Example:**
 ```go

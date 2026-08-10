@@ -69,7 +69,7 @@ go test ./pkg/mupdf/ -run "TestGetVersion" -v
 If successful, you should see output similar to:
 ```
 === RUN   TestGetVersion
-    context_test.go:15: MuPDF version: 1.26.3
+    context_test.go:15: MuPDF version: 1.27.2
 --- PASS: TestGetVersion (0.00s)
 PASS
 ```
@@ -164,7 +164,7 @@ Expected output:
 ```
 Document: path/to/your/document.pdf
 Pages: 5
-MuPDF Version: 1.26.3
+MuPDF Version: 1.27.2
 First page size: 612.0 x 792.0 points
 First page size: 8.50 x 11.00 inches
 Text preview (first 100 chars): This is the beginning of the document text content that was extract...

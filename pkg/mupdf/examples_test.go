@@ -12,7 +12,7 @@ import (
 func ExampleGetVersion() {
 	version := mupdf.GetVersion()
 	// Assert the shape of the version string rather than pinning an exact
-	// MuPDF release (e.g. "1.26.3"), so upgrades don't break this example.
+	// MuPDF release (e.g. "1.27.2"), so upgrades don't break this example.
 	fmt.Println(version != "" && strings.Count(version, ".") >= 1)
 	// Output: true
 }
