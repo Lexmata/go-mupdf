@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-08-10
+
+### 🐛 Bug Fixes
+- **outline**: `AddBookmarks` no longer silently saves a truncated outline when
+  an item fails to insert. `insertOutlineItems` now returns `(inserted,
+  requested)` and `AddBookmarks` returns an error instead of calling
+  `pdf_save_document` when they disagree, so a failed `fz_outline_iterator_insert`
+  (or a failed descent into an item's children) fails loudly rather than
+  permanently dropping bookmarks from the source PDF. (MPDF-116)
+
 ## [1.9.1] - 2026-08-10
 
 ### 🐛 Bug Fixes
