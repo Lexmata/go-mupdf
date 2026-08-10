@@ -157,10 +157,15 @@ func (doc *Document) LoadPage(pageNum int) (*Page, error) {
 
 // Close closes the page and releases resources
 func (page *Page) Close() {
-	if page.page != nil && page.ctx != nil && page.ctx.ctx != nil {
-		C.fz_drop_page(page.ctx.ctx, page.page)
+	page.ctx.withLock(func(c *C.fz_context) {
+		if page.page == nil {
+			return
+		}
+		if c != nil {
+			C.fz_drop_page(c, page.page)
+		}
 		page.page = nil
-	}
+	})
 }
 
 // Bound returns the page's bounding rectangle in the page's coordinate system.
