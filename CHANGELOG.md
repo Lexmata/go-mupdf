@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-08-10
+
+### 🐛 Bug Fixes
+- **CI**: Regenerated `mupdf.lock`, which had gone stale in 1.9.0 (the submodule
+  pointer moved to MuPDF 1.27.2 but the separate cache-key pin didn't), causing
+  `check-mupdf-lock.sh` to fail "Build MuPDF Libraries" on every branch. The
+  1.9.0 tag's release pipeline failed before producing any artifacts — use
+  1.9.1, not 1.9.0.
+
 ## [1.9.0] - 2026-08-10
 
 ### 🔄 Dependencies
