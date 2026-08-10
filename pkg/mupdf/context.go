@@ -60,7 +60,7 @@ import (
 //   - Logging and version tracking
 //   - Support and troubleshooting
 //
-// Returns a version string in the format "X.Y.Z" (e.g., "1.26.3").
+// Returns a version string in the format "X.Y.Z" (e.g., "1.27.2").
 //
 // Example:
 //

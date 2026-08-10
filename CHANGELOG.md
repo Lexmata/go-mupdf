@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Dependencies
+- **MuPDF**: Updated from 1.26.3 to 1.27.2
+  - See [MuPDF CHANGES](third_party/mupdf/CHANGES) for the upstream changelog
+  - Verified `AddBookmarks` against an ObjStm-compressed PDF (descending-page-order
+    siblings, `qpdf --check`, byte-identical text extraction, outline round-trip) on
+    both 1.26.3 and 1.27.2 — both pass identically, confirming this bump does not
+    change behavior for that path
+
 ## [1.8.1] - 2026-08-10
 
 Supersedes 1.8.0. The 1.8.0 tag exists but its release build failed before
