@@ -1,4 +1,4 @@
 [submodule "third_party/mupdf"]
 	path = third_party/mupdf
 	url = https://github.com/ArtifexSoftware/mupdf.git
-	branch = 1.26.3
+	branch = 1.27.2

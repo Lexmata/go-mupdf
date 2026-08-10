@@ -35,7 +35,7 @@ go get bitbucket.org/lexmata/go-mupdf
 The `pkg/mupdf/setup.go` file's `init()` function automatically runs before CGO compilation. This function:
 
 1. Checks if `libmupdf.a` and `libmupdf-third.a` already exist
-2. If not, downloads MuPDF tarball from GitHub releases (https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.3.tar.gz)
+2. If not, downloads MuPDF tarball from GitHub releases (https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.27.2.tar.gz)
 3. Extracts the tarball to `third_party/mupdf`
 4. Builds MuPDF libraries with the correct flags
 5. Verifies both `libmupdf.a` and `libmupdf-third.a` were created
@@ -155,9 +155,9 @@ User runs: go get bitbucket.org/lexmata/go-mupdf
     │   │   │
     │   │   ├─> Check if third_party/mupdf/Makefile exists
     │   │   │   └─> If not, download tarball from GitHub
-    │   │   │       ├─> Download: https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.26.3.tar.gz
+    │   │   │       ├─> Download: https://github.com/ArtifexSoftware/mupdf/archive/refs/tags/1.27.2.tar.gz
     │   │   │       ├─> Extract to third_party/
-    │   │   │       └─> Rename mupdf-1.26.3 to mupdf
+    │   │   │       └─> Rename mupdf-1.27.2 to mupdf
     │   │   │
     │   │   └─> Build MuPDF libraries
     │   │       ├─> Run: make -j<N> USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs
