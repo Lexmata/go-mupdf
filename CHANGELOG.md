@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-10
+
 ### 🔄 Dependencies
 - **MuPDF**: Updated from 1.26.3 to 1.27.2
   - See [MuPDF CHANGES](third_party/mupdf/CHANGES) for the upstream changelog
