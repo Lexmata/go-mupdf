@@ -172,7 +172,14 @@ func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineIte
 	}
 	defer C.fz_drop_outline_iterator(ctx.ctx, iter)
 
-	insertOutlineItems(ctx.ctx, iter, items)
+	// Count how many items (across the whole tree) fail to insert. Saving a
+	// document whose outline is silently truncated is worse than failing loudly:
+	// callers overwrite the source PDF with the result, so a dropped insert would
+	// permanently lose bookmarks with no error. Refuse to save a partial outline.
+	inserted, requested := insertOutlineItems(ctx.ctx, iter, items)
+	if inserted != requested {
+		return fmt.Errorf("go-mupdf: AddBookmarks: only %d of %d outline items inserted; refusing to save partial outline", inserted, requested)
+	}
 
 	if C.safe_pdf_save(ctx.ctx, doc, cOutput) != 0 {
 		return fmt.Errorf("go-mupdf: failed to save PDF: %s", outputPath)
@@ -198,8 +205,12 @@ func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineIte
 // which silently failed to descend. Net effect: only one item survived
 // per level and children were dropped. mupdf would then emit "repaired
 // broken tree structure in outline" when the resulting PDF was read back.
-func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []OutlineItem) {
+// insertOutlineItems returns (inserted, requested): how many items across the
+// whole subtree were successfully inserted, and how many were requested. The
+// caller compares the two to detect a silently-truncated outline.
+func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []OutlineItem) (inserted, requested int) {
 	for _, item := range items {
+		requested++
 		uri := fmt.Sprintf("#page=%d", item.Page+1)
 		cTitle := C.CString(item.Title)
 		cURI := C.CString(uri)
@@ -214,10 +225,13 @@ func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []
 		C.free(unsafe.Pointer(cURI))
 
 		if insertRet < 0 {
-			// Insert failed; do not attempt children, and leave the cursor
-			// where it is for the next sibling attempt.
+			// Insert failed; count this item's descendants as requested but not
+			// inserted, do not attempt children, and leave the cursor where it
+			// is for the next sibling attempt.
+			requested += countItems(item.Children)
 			continue
 		}
+		inserted++
 
 		if len(item.Children) > 0 {
 			// Step back to the item we just inserted, descend into it,
@@ -225,11 +239,30 @@ func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []
 			// the parent so the next sibling lands in the right slot.
 			if C.safe_iter_prev(ctx, iter) >= 0 {
 				if C.safe_iter_down(ctx, iter) >= 0 {
-					insertOutlineItems(ctx, iter, item.Children)
+					ci, cr := insertOutlineItems(ctx, iter, item.Children)
+					inserted += ci
+					requested += cr
 					C.safe_iter_up(ctx, iter)
+				} else {
+					// Could not descend: children are requested but unreachable.
+					requested += countItems(item.Children)
 				}
 				C.safe_iter_next(ctx, iter)
+			} else {
+				// Could not step back onto the inserted item: same as above.
+				requested += countItems(item.Children)
 			}
 		}
 	}
+	return inserted, requested
+}
+
+// countItems returns the total number of items in the subtree rooted at items.
+func countItems(items []OutlineItem) int {
+	n := 0
+	for _, item := range items {
+		n++
+		n += countItems(item.Children)
+	}
+	return n
 }
