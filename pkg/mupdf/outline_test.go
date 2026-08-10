@@ -221,3 +221,36 @@ func TestAddBookmarks_EmptyItems(t *testing.T) {
 		t.Fatal("expected error for empty items")
 	}
 }
+
+// TestCountItems guards the accounting AddBookmarks relies on to detect a
+// silently-truncated outline: countItems must total every node in the tree,
+// including nested children, so a failed insert can be reported as inserted !=
+// requested rather than saved as a partial outline.
+func TestCountItems(t *testing.T) {
+	cases := []struct {
+		name  string
+		items []OutlineItem
+		want  int
+	}{
+		{"nil", nil, 0},
+		{"flat", []OutlineItem{{Title: "a"}, {Title: "b"}}, 2},
+		{
+			"nested",
+			[]OutlineItem{
+				{Title: "root", Children: []OutlineItem{
+					{Title: "c1"},
+					{Title: "c2", Children: []OutlineItem{{Title: "g1"}}},
+				}},
+				{Title: "sibling"},
+			},
+			5,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := countItems(tc.items); got != tc.want {
+				t.Errorf("countItems = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
