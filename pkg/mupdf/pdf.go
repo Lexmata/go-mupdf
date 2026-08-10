@@ -322,6 +322,9 @@ import (
 //   - Because the reference is kept independently of the parent
 //     Document, a PDFDocument stays valid after the parent Document is
 //     closed; Close() must still be called on it
+//   - The Context must outlive the PDFDocument. Dropping the Context first
+//     releases the PDF document along with it, so a later Close() has
+//     nothing left to release and cannot report the difference.
 type PDFDocument struct {
 	ctx *Context
 	doc *Document
@@ -357,14 +360,22 @@ func (doc *Document) AsPDFDocument() (*PDFDocument, error) {
 // Close releases the kept PDF document reference obtained from
 // AsPDFDocument. It is safe to call Close multiple times.
 func (pdf *PDFDocument) Close() {
-	if pdf.pdf != nil && pdf.ctx != nil && pdf.ctx.ctx != nil {
-		var cError *C.char
-		C.go_mupdf_pdf_drop_document(pdf.ctx.ctx, pdf.pdf, &cError)
-		if cError != nil {
-			C.free(unsafe.Pointer(cError))
+	pdf.ctx.withLock(func(c *C.fz_context) {
+		if pdf.pdf == nil {
+			return
 		}
+		if c != nil {
+			var cError *C.char
+			C.go_mupdf_pdf_drop_document(c, pdf.pdf, &cError)
+			if cError != nil {
+				C.free(unsafe.Pointer(cError))
+			}
+		}
+		// Cleared even when the Context is already gone: fz_drop_context
+		// released the document along with it, so keeping the pointer
+		// would leave a dangling reference for later calls to use.
 		pdf.pdf = nil
-	}
+	})
 }
 
 // OpenPDFDocument opens a PDF document from a file path
@@ -480,11 +491,15 @@ func (pdf *PDFDocument) LoadPage(pageNum int) (*PDFPage, error) {
 
 // Close closes the page and releases resources
 func (page *PDFPage) Close() {
-	if page.page != nil && page.ctx != nil && page.ctx.ctx != nil {
-		// Always drop the page - pages should be properly managed
-		C.fz_drop_page(page.ctx.ctx, (*C.fz_page)(unsafe.Pointer(page.page)))
+	page.ctx.withLock(func(c *C.fz_context) {
+		if page.page == nil {
+			return
+		}
+		if c != nil {
+			C.fz_drop_page(c, (*C.fz_page)(unsafe.Pointer(page.page)))
+		}
 		page.page = nil
-	}
+	})
 }
 
 // Bound returns the page's bounding box.
@@ -615,10 +630,15 @@ func (pdf *PDFDocument) NewPDFObject(value interface{}) (*PDFObject, error) {
 
 // Drop releases the PDF object
 func (obj *PDFObject) Drop() {
-	if obj.obj != nil && obj.ctx != nil && obj.ctx.ctx != nil {
-		C.pdf_drop_obj(obj.ctx.ctx, obj.obj)
+	obj.ctx.withLock(func(c *C.fz_context) {
+		if obj.obj == nil {
+			return
+		}
+		if c != nil {
+			C.pdf_drop_obj(c, obj.obj)
+		}
 		obj.obj = nil
-	}
+	})
 }
 
 // PDFWriter provides functionality for creating new PDF documents from scratch.
@@ -741,10 +761,15 @@ func NewPDFWriter(ctx *Context) (*PDFWriter, error) {
 
 // Close closes the PDF writer and releases resources
 func (writer *PDFWriter) Close() {
-	if writer.writer != nil && writer.ctx != nil && writer.ctx.ctx != nil {
-		C.pdf_drop_document(writer.ctx.ctx, writer.writer)
+	writer.ctx.withLock(func(c *C.fz_context) {
+		if writer.writer == nil {
+			return
+		}
+		if c != nil {
+			C.pdf_drop_document(c, writer.writer)
+		}
 		writer.writer = nil
-	}
+	})
 }
 
 // AddPage adds a new page to the PDF document with specified dimensions.

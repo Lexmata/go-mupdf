@@ -947,7 +947,7 @@ Tests are organized to directly mirror the module structure:
 
 ---
 
-**Version**: 1.8.0 (see the `VERSION` file for the current release)
+**Version**: 1.8.1 (see the `VERSION` file for the current release)
 **MuPDF Version**: 1.26.3
 **PDFCPU Version**: 0.11.1
 **Go Version**: 1.24+

@@ -204,6 +204,10 @@ Each release includes:
 
 See [CHANGELOG.md](../CHANGELOG.md) for the full history. Highlights:
 
+### v1.8.1 (2026-08-10)
+- Fixed a data race between the GC finalizer goroutine and `Context.Drop`
+- Supersedes v1.8.0, whose release build failed before publishing artifacts
+
 ### v1.8.0 (2026-08-09)
 - Fixed a use-after-free in `Document.AsPDFDocument` / `PDFDocument.Close`
 - `PDFWriter.AddPage` links pages into the page tree and creates genuinely

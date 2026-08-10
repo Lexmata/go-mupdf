@@ -175,10 +175,15 @@ func (page *Page) ExtractText() (*TextPage, error) {
 
 // Close closes the text page and releases resources
 func (text *TextPage) Close() {
-	if text.text != nil && text.ctx != nil && text.ctx.ctx != nil {
-		C.fz_drop_stext_page(text.ctx.ctx, text.text)
+	text.ctx.withLock(func(c *C.fz_context) {
+		if text.text == nil {
+			return
+		}
+		if c != nil {
+			C.fz_drop_stext_page(c, text.text)
+		}
 		text.text = nil
-	}
+	})
 }
 
 // String returns the extracted text content as a UTF-8 string.

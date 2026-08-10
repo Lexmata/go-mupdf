@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-08-10
+
+Supersedes 1.8.0. The 1.8.0 tag exists but its release build failed before
+publishing any artifacts, so 1.8.1 is the first usable 1.8.x release. Use
+1.8.1 rather than 1.8.0.
+
+### 🐛 Bug Fixes
+
+- Fixed a data race between the GC finalizer goroutine and `Context.Drop`.
+  Cleanup reaches MuPDF from two goroutines — the one that owns the object,
+  and the finalizer goroutine running the documented safety net — and every
+  `Close`/`Drop` tested `ctx.ctx` without synchronisation while
+  `Context.Drop` wrote it. Beyond the reported race, a finalizer could pass
+  a context that `Drop` was midway through freeing to MuPDF.
+
+  `Context` now carries a mutex, and all seven cleanup paths (`Document`,
+  `PDFDocument`, `Page`, `PDFPage`, `TextPage`, `PDFWriter`, `PDFObject`) go
+  through a `withLock` helper that makes the "still alive?" check and the
+  use of the context a single atomic step. Holding the lock across the cgo
+  call also prevents two goroutines from entering MuPDF at once, which
+  matters because MuPDF is built here in single-threaded mode.
+
+  The `PDFDocument` case was a regression introduced in 1.8.0, which gave
+  `PDFDocument` a finalizer that actually frees (previously a no-op). The
+  other six were the same latent pattern and are fixed with the same
+  mechanism.
+
+- Cleanup now clears its object's pointer even when the `Context` was
+  dropped first. `fz_drop_context` already released the object, so keeping
+  the pointer left a dangling reference for later calls to pick up.
+
+### ✨ Added
+
+- `pkg/mupdf/finalizer_race_test.go` — regression coverage for the above.
+  Verified by reverting the fix: the deterministic test reports
+  `DATA RACE ... (*Context).Drop()` against each of the affected types, and
+  passes once the fix is restored.
+
 ## [1.8.0] - 2026-08-09
 
 Minor version bump rather than a patch: this release changes several

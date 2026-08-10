@@ -182,10 +182,15 @@ func OpenDocument(ctx *Context, filename string) (*Document, error) {
 //	// Use document for operations...
 //	// Close() will be called automatically when function returns
 func (doc *Document) Close() {
-	if doc.doc != nil && doc.ctx != nil && doc.ctx.ctx != nil {
-		C.fz_drop_document(doc.ctx.ctx, doc.doc)
+	doc.ctx.withLock(func(c *C.fz_context) {
+		if doc.doc == nil {
+			return
+		}
+		if c != nil {
+			C.fz_drop_document(c, doc.doc)
+		}
 		doc.doc = nil
-	}
+	})
 }
 
 // CountPages returns the total number of pages in the document.
