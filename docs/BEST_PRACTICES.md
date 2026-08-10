@@ -197,7 +197,12 @@ func extractTextBatched(doc *mupdf.Document, batchSize int) ([]string, error) {
 
 ## Concurrency
 
-### Thread-Safe Context Usage
+### One Context Per Goroutine
+
+A `Context` is **not** thread-safe. MuPDF is initialised in single-threaded
+mode (no locking primitives), so sharing a `Context` — or any Document, Page,
+or PDFWriter derived from it — across goroutines is undefined behaviour. Give
+each goroutine its own `Context`.
 
 ```go
 // ✅ Good: Separate contexts for goroutines

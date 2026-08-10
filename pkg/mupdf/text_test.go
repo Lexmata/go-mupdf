@@ -2,28 +2,27 @@ package mupdf
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-// Final push to achieve 90%+ coverage by targeting remaining uncovered lines
+// Tests asserting that repeated calls stay consistent and that genuine error
+// paths (closed resources, invalid files) actually fail.
 
-func TestRemainingErrorPaths(t *testing.T) {
+func TestDocumentRepeatedCalls(t *testing.T) {
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
 	}
 	defer ctx.Drop()
 
-	// Test the remaining 20% of NewContext (error path)
-	// This is difficult to trigger artificially, but we can test normal flow
+	// A second context must also be creatable.
 	ctx2, err := NewContext()
 	if err != nil {
-		t.Logf("Got error in second context creation: %v", err)
-	} else {
-		ctx2.Drop()
+		t.Fatalf("Failed to create second context: %v", err)
 	}
+	ctx2.Drop()
 
-	// Test document CountPages error path (33.3% remaining)
 	pdfPath := createTestPDF(t)
 	doc, err := OpenDocument(ctx, pdfPath)
 	if err != nil {
@@ -31,14 +30,14 @@ func TestRemainingErrorPaths(t *testing.T) {
 	}
 	defer doc.Close()
 
-	// Multiple calls to trigger different code paths
+	// Repeated CountPages calls must agree.
 	count1 := doc.CountPages()
 	count2 := doc.CountPages()
 	if count1 != count2 {
 		t.Errorf("Inconsistent page counts: %d vs %d", count1, count2)
 	}
 
-	// Test page Bound error path (33.3% remaining)
+	// Repeated Bound calls must agree.
 	if count1 > 0 {
 		page, err := doc.LoadPage(0)
 		if err != nil {
@@ -46,15 +45,15 @@ func TestRemainingErrorPaths(t *testing.T) {
 		}
 		defer page.Close()
 
-		// Multiple calls to Bound to test error paths
 		bounds1 := page.Bound()
 		bounds2 := page.Bound()
-		t.Logf("Bounds1: %+v", bounds1)
-		t.Logf("Bounds2: %+v", bounds2)
+		if bounds1 != bounds2 {
+			t.Errorf("Inconsistent bounds: %+v vs %+v", bounds1, bounds2)
+		}
 	}
 }
 
-func TestExtractTextErrorPaths(t *testing.T) {
+func TestExtractTextIdempotence(t *testing.T) {
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
@@ -68,151 +67,163 @@ func TestExtractTextErrorPaths(t *testing.T) {
 	}
 	defer doc.Close()
 
-	if doc.CountPages() > 0 {
-		page, err := doc.LoadPage(0)
+	if doc.CountPages() == 0 {
+		t.Fatal("Expected test PDF to contain at least one page")
+	}
+
+	page, err := doc.LoadPage(0)
+	if err != nil {
+		t.Fatalf("Failed to load page: %v", err)
+	}
+	defer page.Close()
+
+	text1, err := page.ExtractText()
+	if err != nil {
+		t.Fatalf("Failed first text extraction: %v", err)
+	}
+	defer text1.Close()
+
+	// Repeated String calls on the same TextPage must agree.
+	content1 := text1.String()
+	content2 := text1.String()
+	if content1 != content2 {
+		t.Errorf("Inconsistent String results: %d vs %d chars", len(content1), len(content2))
+	}
+
+	// A second extraction on the same page must succeed and agree.
+	text2, err := page.ExtractText()
+	if err != nil {
+		t.Fatalf("Failed second text extraction: %v", err)
+	}
+	defer text2.Close()
+	if got := text2.String(); got != content1 {
+		t.Errorf("Second extraction differs: %d vs %d chars", len(got), len(content1))
+	}
+
+	// Error path: extraction from a closed page must fail.
+	closedPage, err := doc.LoadPage(0)
+	if err != nil {
+		t.Fatalf("Failed to load page for close test: %v", err)
+	}
+	closedPage.Close()
+	if _, err := closedPage.ExtractText(); err == nil {
+		t.Error("Expected error extracting text from a closed page")
+	}
+}
+
+func TestPDFDocumentRepeatedCalls(t *testing.T) {
+	ctx, err := NewContext()
+	if err != nil {
+		t.Fatalf("Failed to create context: %v", err)
+	}
+	defer ctx.Drop()
+
+	pdfPath := createTestPDF(t)
+	doc, err := OpenDocument(ctx, pdfPath)
+	if err != nil {
+		t.Fatalf("Failed to open document: %v", err)
+	}
+	defer doc.Close()
+
+	pdfDoc, err := doc.AsPDFDocument()
+	if err != nil {
+		t.Fatalf("AsPDFDocument failed: %v", err)
+	}
+
+	// Repeated CountPages calls must agree.
+	count1 := pdfDoc.CountPages()
+	count2 := pdfDoc.CountPages()
+	if count1 != count2 {
+		t.Errorf("Inconsistent PDF page counts: %d vs %d", count1, count2)
+	}
+
+	if count1 > 0 {
+		page, err := pdfDoc.LoadPage(0)
 		if err != nil {
-			t.Fatalf("Failed to load page: %v", err)
+			t.Fatalf("Failed to load PDF page: %v", err)
 		}
 		defer page.Close()
 
-		// Test ExtractText error path (22.2% remaining)
-		text1, err := page.ExtractText()
-		if err != nil {
-			t.Logf("Got error in first text extraction: %v", err)
-		} else {
-			defer text1.Close()
-
-			// Test String method error path (28.6% remaining)
-			content1 := text1.String()
-			content2 := text1.String() // Call twice to test different paths
-
-			if len(content1) != len(content2) {
-				t.Errorf("Inconsistent text extraction: %d vs %d chars", len(content1), len(content2))
-			}
-		}
-
-		// Try extracting text again on same page
-		text2, err := page.ExtractText()
-		if err != nil {
-			t.Logf("Got error in second text extraction: %v", err)
-		} else {
-			defer text2.Close()
-			content := text2.String()
-			t.Logf("Second extraction got %d characters", len(content))
-		}
-	}
-}
-
-func TestPDFDocumentErrorPaths(t *testing.T) {
-	ctx, err := NewContext()
-	if err != nil {
-		t.Fatalf("Failed to create context: %v", err)
-	}
-	defer ctx.Drop()
-
-	pdfPath := createTestPDF(t)
-	doc, err := OpenDocument(ctx, pdfPath)
-	if err != nil {
-		t.Fatalf("Failed to open document: %v", err)
-	}
-	defer doc.Close()
-
-	// Test AsPDFDocument error path (25% remaining)
-	pdfDoc1, err := doc.AsPDFDocument()
-	if err != nil {
-		t.Logf("Got error in first AsPDFDocument: %v", err)
-	} else {
-		// Test PDF document operations
-		count1 := pdfDoc1.CountPages()
-		count2 := pdfDoc1.CountPages() // Call twice
-		t.Logf("PDF doc counts: %d, %d", count1, count2)
-
-		if count1 > 0 {
-			// Test PDF page operations
-			page1, err := pdfDoc1.LoadPage(0)
-			if err != nil {
-				t.Logf("Error loading PDF page: %v", err)
-			} else {
-				defer page1.Close()
-				bounds := page1.Bound()
-				t.Logf("PDF page bounds: %+v", bounds)
-			}
+		bounds1 := page.Bound()
+		bounds2 := page.Bound()
+		if bounds1 != bounds2 {
+			t.Errorf("Inconsistent PDF page bounds: %+v vs %+v", bounds1, bounds2)
 		}
 	}
 
-	// Test OpenPDFDocument error path (25% remaining)
+	// Opening the same file directly must report the same count.
 	pdfDoc2, err := OpenPDFDocument(ctx, pdfPath)
 	if err != nil {
-		t.Logf("Got error in OpenPDFDocument: %v", err)
-	} else {
-		count := pdfDoc2.CountPages()
-		t.Logf("Direct PDF doc count: %d", count)
+		t.Fatalf("OpenPDFDocument failed: %v", err)
+	}
+	if got := pdfDoc2.CountPages(); got != count1 {
+		t.Errorf("OpenPDFDocument page count = %d, want %d", got, count1)
+	}
+
+	// Error path: a file whose contents are not a PDF must fail to open.
+	badPath := filepath.Join(t.TempDir(), "not-a-pdf.pdf")
+	if err := os.WriteFile(badPath, []byte("this is not a valid PDF file"), 0o644); err != nil {
+		t.Fatalf("Failed to write invalid file: %v", err)
+	}
+	if _, err := OpenDocument(ctx, badPath); err == nil {
+		t.Error("Expected error opening non-PDF file contents")
 	}
 }
 
-func TestPDFWriterSpecialCases(t *testing.T) {
+func TestPDFWriterBasicOperations(t *testing.T) {
 	ctx, err := NewContext()
 	if err != nil {
 		t.Fatalf("Failed to create context: %v", err)
 	}
 	defer ctx.Drop()
 
-	// Test NewPDFWriter error path (20% remaining)
 	writer1, err := NewPDFWriter(ctx)
 	if err != nil {
-		t.Logf("Got error in first NewPDFWriter: %v", err)
-	} else {
-		defer writer1.Close()
-
-		// Test AddPage error path (25% remaining)
-		page1, err := writer1.AddPage(612, 792)
-		if err != nil {
-			t.Logf("Got error in first AddPage: %v", err)
-		} else {
-			defer page1.Close()
-		}
-
-		page2, err := writer1.AddPage(595, 842)
-		if err != nil {
-			t.Logf("Got error in second AddPage: %v", err)
-		} else {
-			defer page2.Close()
-		}
+		t.Fatalf("Failed to create first writer: %v", err)
 	}
+	defer writer1.Close()
 
-	// Create another writer to test different conditions
+	page1, err := writer1.AddPage(612, 792)
+	if err != nil {
+		t.Fatalf("Failed first AddPage: %v", err)
+	}
+	defer page1.Close()
+
+	page2, err := writer1.AddPage(595, 842)
+	if err != nil {
+		t.Fatalf("Failed second AddPage: %v", err)
+	}
+	defer page2.Close()
+
+	// A second writer on the same context must work too.
 	writer2, err := NewPDFWriter(ctx)
 	if err != nil {
-		t.Logf("Got error in second NewPDFWriter: %v", err)
-	} else {
-		defer writer2.Close()
+		t.Fatalf("Failed to create second writer: %v", err)
+	}
+	defer writer2.Close()
 
-		// Test NewPDFObject edge cases (14.3% remaining)
+	// All supported value types must produce PDF objects.
+	supportedValues := []interface{}{
+		nil,
+		true,
+		false,
+		int(0),
+		int(-1),
+		int(999999),
+		float64(0.0),
+		float64(1e-10),
+		float64(1e10),
+		"",
+		"\x00\x01\x02", // binary string
+	}
 
-		// Test with edge case values
-		edgeCases := []interface{}{
-			nil,
-			true,
-			false,
-			int(0),
-			int(-1),
-			int(999999),
-			float64(0.0),
-			float64(0.0),
-			float64(1e-10),
-			float64(1e10),
-			"",
-			"\x00\x01\x02", // binary string
+	for i, val := range supportedValues {
+		obj, err := writer2.NewPDFObject(val)
+		if err != nil {
+			t.Errorf("NewPDFObject %d (%T): %v", i, val, err)
+			continue
 		}
-
-		for i, val := range edgeCases {
-			obj, err := writer2.NewPDFObject(val)
-			if err != nil {
-				t.Logf("Error creating object %d (%T): %v", i, val, err)
-			} else {
-				obj.Drop()
-			}
-		}
+		obj.Drop()
 	}
 }
 

@@ -195,7 +195,7 @@ func (doc *Document) Close() {
 // and may involve parsing the document tree.
 //
 // Returns:
-//   - int: The number of pages (>= 0), or -1 if an error occurs
+//   - int: The number of pages (>= 0), or 0 if an error occurs
 //
 // The returned count can be used to iterate through all pages:
 //
@@ -204,10 +204,14 @@ func (doc *Document) Close() {
 //	    // ... process page
 //	}
 //
-// Error conditions (returns -1):
+// Error conditions (returns 0):
 //   - Document is closed or invalid
 //   - Document structure is corrupted
 //   - MuPDF internal error
+//
+// Note: 0 is returned both for a document with no pages and for a
+// closed or invalid one; these cases are not distinguishable through
+// this method.
 //
 // Note: Page numbering is zero-based, so valid page indices
 // range from 0 to CountPages()-1.
@@ -222,6 +226,10 @@ func (doc *Document) Close() {
 //	    // ...
 //	}
 func (doc *Document) CountPages() int {
+	if doc.doc == nil || doc.ctx == nil || doc.ctx.ctx == nil {
+		return 0
+	}
+
 	var cError *C.char
 	count := C.go_mupdf_count_pages(doc.ctx.ctx, doc.doc, &cError)
 

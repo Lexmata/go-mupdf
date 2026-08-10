@@ -28,35 +28,39 @@ fz_stext_page* go_mupdf_extract_text(fz_context *ctx, fz_page *page, char **out_
     return text;
 }
 
-// Convert text page to string
-char* go_mupdf_stext_page_to_string(fz_context *ctx, fz_stext_page *text, char **out_error) {
-    char *result = NULL;
+// Convert text page to a buffer. On success returns the buffer and sets
+// out_data/out_len to its storage; the caller must drop the buffer with
+// fz_drop_buffer after copying the data out.
+fz_buffer* go_mupdf_stext_page_to_buffer(fz_context *ctx, fz_stext_page *text,
+                                         unsigned char **out_data, size_t *out_len,
+                                         char **out_error) {
+    fz_buffer *buf = NULL;
+    *out_data = NULL;
+    *out_len = 0;
     *out_error = NULL;
 
+    fz_var(buf);
+
     fz_try(ctx) {
-        fz_buffer *buf = fz_new_buffer_from_stext_page(ctx, text);
-        size_t len = fz_buffer_storage(ctx, buf, (unsigned char**)&result);
-
-        // Allocate and copy the string
-        char *copy = (char*)malloc(len + 1);
-        memcpy(copy, result, len);
-        copy[len] = '\0';
-
-        fz_drop_buffer(ctx, buf);
-        result = copy;
+        buf = fz_new_buffer_from_stext_page(ctx, text);
+        *out_len = fz_buffer_storage(ctx, buf, out_data);
     }
     fz_catch(ctx) {
         const char *error_message = fz_caught_message(ctx);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
+        if (buf) {
+            fz_drop_buffer(ctx, buf);
+        }
         return NULL;
     }
 
-    return result;
+    return buf;
 }
 */
 import "C"
 import (
+	"math"
 	"runtime"
 	"unsafe"
 )
@@ -96,6 +100,12 @@ import (
 type TextPage struct {
 	ctx  *Context
 	text *C.fz_stext_page
+
+	// cached holds the result of the first String() call so repeated
+	// calls avoid re-serializing the text page. Not consulted after
+	// Close(), which reports "" regardless.
+	cached    string
+	hasCached bool
 }
 
 // ExtractText extracts all text content from the page.
@@ -143,6 +153,10 @@ type TextPage struct {
 //	    fmt.Println("No text found on this page")
 //	}
 func (page *Page) ExtractText() (*TextPage, error) {
+	if page.page == nil || page.ctx == nil || page.ctx.ctx == nil {
+		return nil, Error{message: "page is closed or invalid"}
+	}
+
 	var cError *C.char
 	text := C.go_mupdf_extract_text(page.ctx.ctx, page.page, &cError)
 
@@ -183,8 +197,13 @@ func (text *TextPage) Close() {
 //   - Uses UTF-8 encoding for proper character representation
 //   - Handles various text encodings from the source document
 //
-// If an error occurs during string conversion (e.g., the TextPage
-// is closed or invalid), returns an empty string.
+// The result is computed once and cached on the TextPage, so repeated
+// calls are cheap and do not re-serialize the text page.
+//
+// Returns an empty string if the TextPage is closed or invalid, or if
+// an error occurs during string conversion. The closed check takes
+// precedence over the cache: String returns "" after Close() even if a
+// value was cached beforehand.
 //
 // Text Processing:
 //   - Reconstructs text flow across text objects
@@ -215,14 +234,37 @@ func (text *TextPage) Close() {
 //	words := strings.Fields(content)
 //	fmt.Printf("Word count: %d\n", len(words))
 func (text *TextPage) String() string {
+	// The closed/invalid check deliberately precedes the cache lookup:
+	// String reports "" for a closed TextPage regardless of whether a
+	// value was cached earlier.
+	if text.text == nil || text.ctx == nil || text.ctx.ctx == nil {
+		return ""
+	}
+
+	if text.hasCached {
+		return text.cached
+	}
+
 	var cError *C.char
-	cStr := C.go_mupdf_stext_page_to_string(text.ctx.ctx, text.text, &cError)
+	var data *C.uchar
+	var length C.size_t
+	buf := C.go_mupdf_stext_page_to_buffer(text.ctx.ctx, text.text, &data, &length, &cError)
 
 	if cError != nil {
 		C.free(unsafe.Pointer(cError))
 		return ""
 	}
 
-	defer C.free(unsafe.Pointer(cStr))
-	return C.GoString(cStr)
+	// GoStringN takes a C.int, so clamp rather than silently truncating
+	// a length that exceeds its range.
+	if uint64(length) > uint64(math.MaxInt32) {
+		length = C.size_t(math.MaxInt32)
+	}
+
+	result := C.GoStringN((*C.char)(unsafe.Pointer(data)), C.int(length))
+	C.fz_drop_buffer(text.ctx.ctx, buf)
+
+	text.cached = result
+	text.hasCached = true
+	return result
 }

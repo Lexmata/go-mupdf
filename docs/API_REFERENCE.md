@@ -37,6 +37,8 @@ type Context struct {
 }
 ```
 
+**Concurrency:** A `Context` is not safe for concurrent use and must not be shared between goroutines. Create one `Context` per goroutine, and keep all objects created from it (documents, pages, writers) on that goroutine.
+
 #### Functions
 
 ##### NewContext
@@ -178,11 +180,13 @@ defer page.Close()
 func (doc *Document) AsPDFDocument() (*PDFDocument, error)
 ```
 
-Converts a Document to a PDFDocument for PDF-specific operations.
+Converts a Document to a PDFDocument for PDF-specific operations. Returns an error when the underlying document is not a PDF.
 
 **Returns:**
 - `*PDFDocument`: A PDF document with extended functionality
 - `error`: An error if the document is not a PDF
+
+**Note:** The returned `PDFDocument` keeps its own reference to the underlying PDF document. Always call its `Close` method when done to release that reference.
 
 ---
 
@@ -323,6 +327,14 @@ Opens a file specifically as a PDF document.
 
 #### Methods
 
+##### Close
+
+```go
+func (doc *PDFDocument) Close()
+```
+
+Releases the PDF document reference (including the reference kept by `AsPDFDocument`). Always call `Close` when done with a `PDFDocument`. Safe to call multiple times.
+
 ##### CountPages
 
 ```go
@@ -393,15 +405,15 @@ Closes the PDF writer and releases resources.
 func (writer *PDFWriter) AddPage(width, height float64) (*PDFPage, error)
 ```
 
-Adds a new page to the PDF document.
+Adds a new page to the PDF document. Both dimensions must be positive; an error is returned otherwise. New pages are created with an empty content stream (no placeholder content).
 
 **Parameters:**
-- `width`: Page width in points (1/72 inch)
-- `height`: Page height in points (1/72 inch)
+- `width`: Page width in points (1/72 inch), must be > 0
+- `height`: Page height in points (1/72 inch), must be > 0
 
 **Returns:**
 - `*PDFPage`: A new page ready for content
-- `error`: An error if page creation fails
+- `error`: An error if page creation fails or a dimension is not positive
 
 **Common Page Sizes:**
 - US Letter: 612 x 792

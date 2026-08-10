@@ -44,18 +44,22 @@ RUN go mod download
 # Copy the entire project
 COPY . .
 
-# Initialize git submodules (MuPDF)
-RUN git submodule update --init --recursive || true
+# NOTE: .dockerignore excludes .git, so `git submodule update` cannot work inside
+# the image. The MuPDF submodule must be checked out on the host before building;
+# COPY above brings the host checkout into the image.
+RUN test -d third_party/mupdf/include || (echo "ERROR: third_party/mupdf submodule not checked out on host" && exit 1)
 
 # Build MuPDF library from source
 # This ensures we use the same MuPDF version regardless of Ubuntu package availability
 RUN if [ -d "third_party/mupdf" ]; then \
         echo "Building MuPDF from source..." && \
         cd third_party/mupdf && \
-        make -j$(nproc) libs && \
+        make -j$(nproc) USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs && \
         cd ../.. && \
         echo "MuPDF build complete. Verifying libraries..." && \
         ls -la third_party/mupdf/build/release/*.a && \
+        test -f third_party/mupdf/build/release/libmupdf.a && \
+        test -f third_party/mupdf/build/release/libmupdf-third.a && \
         echo "Verifying headers..." && \
         ls -la third_party/mupdf/include/mupdf/*.h; \
     else \

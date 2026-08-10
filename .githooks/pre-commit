@@ -144,6 +144,16 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Check that mupdf.lock still matches the submodule pointer. The lock file is
+# part of the CI cache key for the pre-built MuPDF libraries, and a stale pin
+# silently serves libraries built from the wrong MuPDF commit.
+if [ -f "scripts/check-mupdf-lock.sh" ]; then
+    echo "🔒 Checking mupdf.lock pin..."
+    if ! bash scripts/check-mupdf-lock.sh --staged; then
+        FAILED=1
+    fi
+fi
+
 # Check code formatting with gofmt
 echo "📝 Checking code formatting..."
 UNFORMATTED=$(gofmt -l . 2>/dev/null | grep -v "^third_party/" || true)
@@ -157,12 +167,13 @@ else
     echo -e "${GREEN}✅ All files are properly formatted${NC}"
 fi
 
-# Run go vet
+# Run go vet (pkg/ only, matching the scope of the other checks)
 echo "🔍 Running go vet..."
-VET_OUTPUT=$(go vet ./... 2>&1 | grep -v "^third_party/" || true)
-if [ -n "$VET_OUTPUT" ]; then
+VET_OUTPUT=$(go vet ./pkg/... 2>&1)
+VET_EXIT_CODE=$?
+if [ $VET_EXIT_CODE -ne 0 ]; then
     echo -e "${RED}❌ go vet found issues:${NC}"
-    echo "$VET_OUTPUT"
+    echo "$VET_OUTPUT" | grep -v "^third_party/"
     FAILED=1
 else
     echo -e "${GREEN}✅ go vet passed${NC}"
@@ -171,9 +182,10 @@ fi
 # Run golangci-lint if available
 if command_exists golangci-lint; then
     echo "🔬 Running golangci-lint..."
-    if golangci-lint run ./... 2>&1 | grep -v "^third_party/" | grep -q .; then
+    LINT_OUTPUT=$(golangci-lint run ./... 2>&1 | grep -v "^third_party/" || true)
+    if [ -n "$LINT_OUTPUT" ]; then
         echo -e "${YELLOW}⚠️  golangci-lint found issues (non-blocking)${NC}"
-        golangci-lint run ./... 2>&1 | grep -v "^third_party/" | head -20 || true
+        echo "$LINT_OUTPUT" | head -20
     else
         echo -e "${GREEN}✅ golangci-lint passed${NC}"
     fi
@@ -186,7 +198,7 @@ fi
 if [ ! -f "third_party/mupdf/build/release/libmupdf.a" ]; then
     echo -e "${YELLOW}⚠️  MuPDF library not built, building now...${NC}"
     cd third_party/mupdf
-    make -j$(nproc) libs >/dev/null 2>&1 || {
+    make -j$(nproc) libs USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release >/dev/null 2>&1 || {
         echo -e "${RED}❌ Failed to build MuPDF library${NC}"
         echo "   Please build MuPDF manually: cd third_party/mupdf && make libs"
         exit 1
@@ -214,9 +226,11 @@ else
         for pkg in $PACKAGES; do
             if [ -d "$pkg" ]; then
                 echo "   Testing package: $pkg"
-                # Capture both stdout and stderr, filter out MuPDF warnings
-                TEST_OUTPUT=$(go test -short "$pkg" 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
-                TEST_EXIT_CODE=${PIPESTATUS[0]}
+                # Capture both stdout and stderr, keeping the real exit code,
+                # then filter out MuPDF warnings from the captured output
+                TEST_OUTPUT=$(go test -short "$pkg" 2>&1)
+                TEST_EXIT_CODE=$?
+                TEST_OUTPUT=$(echo "$TEST_OUTPUT" | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
 
                 if [ $TEST_EXIT_CODE -eq 0 ]; then
                     echo -e "      ${GREEN}✅ $pkg tests passed${NC}"
@@ -232,9 +246,10 @@ else
     # Also run a quick test on the main package
     if [ -d "pkg/mupdf" ]; then
         echo "   Running quick tests on pkg/mupdf..."
-        # Capture test output and filter out MuPDF warnings
-        TEST_OUTPUT=$(go test -short ./pkg/mupdf/ 2>&1 | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
-        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        # Capture test output with the real exit code, then filter out MuPDF warnings
+        TEST_OUTPUT=$(go test -short ./pkg/mupdf/ 2>&1)
+        TEST_EXIT_CODE=$?
+        TEST_OUTPUT=$(echo "$TEST_OUTPUT" | grep -v "^third_party/" | grep -v "syntax error:" | grep -v "warning: trying to repair" | grep -v "warning: repairing PDF" || true)
 
         if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo -e "${GREEN}✅ Package tests passed${NC}"

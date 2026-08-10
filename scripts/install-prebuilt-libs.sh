@@ -69,6 +69,12 @@ detect_platform() {
     echo "${os}-${arch}"
 }
 
+# Record which target platform the installed libraries were built for
+write_platform_marker() {
+    mkdir -p "$MUPDF_DIR/build/release"
+    detect_platform > "$MUPDF_DIR/build/release/.platform"
+}
+
 # Get version
 get_version() {
     # Try VERSION file
@@ -153,6 +159,7 @@ download_from_bitbucket() {
     rm -rf "$temp_dir"
     
     if check_existing_libs; then
+        write_platform_marker
         log_success "Installed from Bitbucket Downloads"
         return 0
     fi
@@ -175,6 +182,7 @@ install_from_artifact() {
         tar -xzf "$ARTIFACT_DIR/mupdf-libs.tar.gz" -C "$PROJECT_ROOT"
 
         if check_existing_libs; then
+            write_platform_marker
             log_success "MuPDF libraries installed from tarball"
             return 0
         fi
@@ -193,6 +201,7 @@ install_from_artifact() {
         fi
 
         if check_existing_libs; then
+            write_platform_marker
             log_success "MuPDF libraries installed from artifact directory"
             return 0
         fi
@@ -236,6 +245,7 @@ install_from_distribution() {
     rm -rf "$temp_dir"
 
     if check_existing_libs; then
+        write_platform_marker
         log_success "MuPDF libraries installed from distribution"
         return 0
     fi
@@ -267,6 +277,7 @@ build_from_source() {
     cd "$PROJECT_ROOT"
 
     if check_existing_libs; then
+        write_platform_marker
         log_success "MuPDF built from source successfully"
         return 0
     fi
@@ -303,6 +314,13 @@ verify_libraries() {
         return 1
     fi
 
+    local third_size_bytes=$(stat -f%z "$MUPDF_DIR/build/release/libmupdf-third.a" 2>/dev/null || stat -c%s "$MUPDF_DIR/build/release/libmupdf-third.a" 2>/dev/null)
+
+    if [ "$third_size_bytes" -lt 1000000 ]; then
+        log_error "libmupdf-third.a seems too small (< 1MB), may be corrupted"
+        return 1
+    fi
+
     log_success "MuPDF libraries verified successfully"
     return 0
 }
@@ -312,11 +330,49 @@ main() {
     log_info "MuPDF Pre-built Library Installer"
     log_info "=================================="
 
-    # Check if libraries already exist
+    # Check if libraries already exist (and match the target platform)
+    local platform=$(detect_platform)
+    local marker="$MUPDF_DIR/build/release/.platform"
+
     if check_existing_libs; then
-        log_success "MuPDF libraries already installed"
-        verify_libraries
-        exit 0
+        local existing=""
+        if [ -f "$marker" ]; then
+            existing=$(cat "$marker")
+        fi
+
+        if [ -n "$existing" ]; then
+            if [ "$existing" = "$platform" ]; then
+                log_success "MuPDF libraries already installed"
+                verify_libraries
+                exit 0
+            fi
+            log_warn "Existing libraries are for $existing, need $platform — reinstalling"
+            rm -f "$MUPDF_DIR/build/release/libmupdf.a" "$MUPDF_DIR/build/release/libmupdf-third.a" "$marker"
+        else
+            # Legacy install without a platform marker: inspect the archive itself
+            local target_os="${platform%%-*}"
+            local expected=""
+            case "${platform##*-}" in
+                amd64) expected="Advanced Micro Devices X86-64" ;;
+                arm64) expected="AArch64" ;;
+            esac
+            local machine=""
+            if [ "$target_os" = "linux" ] && [ -n "$expected" ] && command -v readelf >/dev/null 2>&1; then
+                local member=$(ar t "$MUPDF_DIR/build/release/libmupdf.a" 2>/dev/null | head -1)
+                machine=$(ar p "$MUPDF_DIR/build/release/libmupdf.a" "$member" 2>/dev/null | readelf -h /dev/stdin 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}')
+            fi
+            if [ -n "$machine" ] && [ "$machine" != "$expected" ]; then
+                log_warn "Existing libraries are for $machine, need $expected ($platform) — reinstalling"
+                rm -f "$MUPDF_DIR/build/release/libmupdf.a" "$MUPDF_DIR/build/release/libmupdf-third.a"
+            else
+                if [ -z "$machine" ]; then
+                    log_warn "No platform marker found and architecture could not be verified; assuming libraries match $platform"
+                fi
+                log_success "MuPDF libraries already installed"
+                verify_libraries
+                exit 0
+            fi
+        fi
     fi
 
     # Try installation methods in order of preference
@@ -338,7 +394,6 @@ main() {
 
     # 3. Try to download from Bitbucket
     if [ $success -eq 0 ] && [ "$SKIP_DOWNLOAD" != "1" ]; then
-        local platform=$(detect_platform)
         local version=$(get_version)
         
         log_info "No local artifacts found, trying Bitbucket Downloads..."

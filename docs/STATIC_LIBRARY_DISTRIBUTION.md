@@ -62,19 +62,13 @@ make dist-clean
 
 ### Supported Platforms
 
-The build script automatically detects and creates packages for:
+Official pre-built packages are produced by the CI/CD pipeline for Linux targets only:
 
-- **Linux**
+- **Linux** (built and published on each release)
   - `linux-amd64` (x86_64)
-  - `linux-arm64` (aarch64)
-  - `linux-arm` (armv7l)
+  - `linux-arm64` (aarch64, cross-compiled)
 
-- **macOS**
-  - `darwin-amd64` (Intel)
-  - `darwin-arm64` (Apple Silicon)
-
-- **Windows**
-  - `windows-amd64` (with MinGW-w64)
+Other platforms are not distributed as pre-built packages — `make setup` builds from source automatically on macOS, Windows, and other platforms. The build script can also create a local package for whatever host platform it runs on (e.g. `darwin-arm64`), but those packages are not published.
 
 ### Building for Multiple Platforms
 
@@ -110,8 +104,8 @@ Each distribution tarball contains:
 ```
 go-mupdf-1.1.0-linux-amd64/
 ├── lib/
-│   ├── libmupdf.a           # MuPDF core library (~8-12 MB)
-│   └── libmupdf-third.a     # Third-party dependencies (~15-20 MB)
+│   ├── libmupdf.a           # MuPDF core library (~50-60 MB)
+│   └── libmupdf-third.a     # Third-party dependencies (~8-10 MB)
 ├── include/
 │   └── mupdf/               # All MuPDF headers
 │       ├── fitz.h
@@ -126,14 +120,14 @@ go-mupdf-1.1.0-linux-amd64/
 
 ### Library Sizes
 
-Typical sizes (may vary by platform):
+Typical sizes for a release build (may vary by platform):
 
-| Component | Size (Release) | Size (Debug) |
-|-----------|---------------|--------------|
-| libmupdf.a | 8-12 MB | 25-35 MB |
-| libmupdf-third.a | 15-20 MB | 40-60 MB |
-| Headers | ~1 MB | ~1 MB |
-| **Total (compressed)** | **~10-15 MB** | **~30-40 MB** |
+| Component | Size (Release) |
+|-----------|---------------|
+| libmupdf.a | ~50-60 MB |
+| libmupdf-third.a | ~8-10 MB |
+| Headers | ~1 MB |
+| **Total (compressed)** | **~25-35 MB** |
 
 ## Using Pre-built Libraries
 

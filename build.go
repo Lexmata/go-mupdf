@@ -2,10 +2,13 @@
 // +build nobuild
 
 // DEPRECATED: This file is no longer used for automatic builds.
-// MuPDF setup is now handled by pkg/mupdf/setup.go which downloads
-// the tarball directly from GitHub releases.
+// MuPDF setup is now handled by scripts/install.sh, which invokes
+// scripts/download-libs.sh to fetch pre-built libraries, with a fallback
+// to building from source via scripts/setup-mupdf.sh / pkg/mupdf/setup.go
+// (git clone from git.ghostscript.com).
 //
-// This file is kept for reference and manual builds only.
+// This file is retained for reference only. It is behind the "nobuild"
+// build tag and is never compiled.
 
 package main
 
@@ -19,10 +22,11 @@ import (
 	"strings"
 )
 
-// This file is used to build the MuPDF library when using go get.
-// It will be executed before the Go package is built.
+// Historically, this program was intended to build the MuPDF library when
+// installing via go get. Go has no pre-build hook, so it was never executed
+// automatically; it is kept only as a reference for the manual steps below.
 //
-// This build hook automatically:
+// When run manually (go run -tags nobuild build.go), it:
 // 1. Downloads git submodules if they don't exist (works even with go get)
 // 2. Builds MuPDF from source
 // 3. Ensures the library is ready for use

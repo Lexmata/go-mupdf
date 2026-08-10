@@ -1,8 +1,12 @@
 package mupdf
 
 import (
+	"bytes"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -14,12 +18,8 @@ func TestDefaultPDFCPUConfig(t *testing.T) {
 	if config == nil {
 		t.Fatalf("DefaultPDFCPUConfig returned nil")
 	}
-	// Verify it's a valid config
-	if config.Config != nil {
-		t.Logf("Config has custom configuration")
-	}
-	if config.WatermarkConfig != nil {
-		t.Logf("Config has watermark configuration")
+	if config.Config == nil {
+		t.Fatalf("DefaultPDFCPUConfig returned config with nil Config")
 	}
 }
 
@@ -65,6 +65,34 @@ func TestMergePDFs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Merged PDF is invalid: %v", err)
 		}
+
+		// Verify the merge actually happened: three 1-page inputs -> 3 pages
+		if pageCount := getPageCount(t, outputPath); pageCount != 3 {
+			t.Fatalf("Expected merged PDF to have 3 pages, got %d", pageCount)
+		}
+
+		// Verify input ordering: the first page must come from the first input
+		doc, err := OpenDocument(ctx, outputPath)
+		if err != nil {
+			t.Fatalf("Failed to open merged PDF: %v", err)
+		}
+		defer doc.Close()
+
+		page, err := doc.LoadPage(0)
+		if err != nil {
+			t.Fatalf("Failed to load first page of merged PDF: %v", err)
+		}
+		defer page.Close()
+
+		textPage, err := page.ExtractText()
+		if err != nil {
+			t.Fatalf("Failed to extract text from merged PDF: %v", err)
+		}
+		defer textPage.Close()
+
+		if text := textPage.String(); !strings.Contains(text, "PDF 1 Content") {
+			t.Fatalf("Expected first page of merged PDF to contain %q, got %q", "PDF 1 Content", text)
+		}
 	})
 
 	// Test 2: Merge single PDF (edge case)
@@ -79,6 +107,10 @@ func TestMergePDFs(t *testing.T) {
 
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			t.Fatalf("Merged PDF file was not created")
+		}
+
+		if pageCount := getPageCount(t, outputPath); pageCount != 1 {
+			t.Fatalf("Expected merged PDF to have 1 page, got %d", pageCount)
 		}
 	})
 
@@ -122,6 +154,10 @@ func TestMergePDFs(t *testing.T) {
 
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			t.Fatalf("Merged PDF file was not created")
+		}
+
+		if pageCount := getPageCount(t, outputPath); pageCount != 2 {
+			t.Fatalf("Expected merged PDF to have 2 pages, got %d", pageCount)
 		}
 	})
 }
@@ -186,18 +222,16 @@ func TestSplitPDF(t *testing.T) {
 	})
 
 	// Test 3: Split with invalid page range (error case)
-	// Note: pdfcpu may not error on invalid ranges, it might create empty files
-	// So we'll skip this test or make it less strict
 	t.Run("SplitInvalidPageRange", func(t *testing.T) {
 		outputDir := filepath.Join(dir, "split_invalid")
 		pageRanges := []string{"999"}
 
+		// pdfcpu v0.11.1 silently drops out-of-range page numbers, producing
+		// an empty selection; no file is extracted, so SplitPDF fails to find
+		// an output file for the range and returns an error.
 		_, err := SplitPDF(pdfPath, outputDir, pageRanges, nil)
-		// pdfcpu might not error on invalid ranges, so we just check it doesn't crash
-		if err != nil {
-			t.Logf("Got expected error for invalid page range: %v", err)
-		} else {
-			t.Logf("No error for invalid page range (pdfcpu behavior)")
+		if err == nil {
+			t.Fatalf("Expected error for out-of-range page selection, got nil")
 		}
 	})
 
@@ -267,15 +301,15 @@ func TestEncryptPDF(t *testing.T) {
 		}
 	})
 
-	// Test 3: Encrypt with empty passwords (edge case)
+	// Test 3: Encrypt with empty passwords (error case)
 	t.Run("EncryptEmptyPasswords", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "encrypted_empty.pdf")
 
+		// pdfcpu v0.11.1 requires an owner password for encryption
+		// ("pdfcpu: please provide owner password and optional user password").
 		err := EncryptPDF(pdfPath, outputPath, "", "", model.PermissionsPrint, nil)
-		// This might succeed or fail depending on pdfcpu implementation
-		// We just verify it doesn't crash
-		if err != nil {
-			t.Logf("Encryption with empty passwords returned error (expected): %v", err)
+		if err == nil {
+			t.Fatalf("Expected error for encryption with empty passwords, got nil")
 		}
 	})
 
@@ -359,14 +393,15 @@ func TestDecryptPDF(t *testing.T) {
 		}
 	})
 
-	// Test 3: Decrypt non-encrypted PDF (edge case)
+	// Test 3: Decrypt non-encrypted PDF (error case)
 	t.Run("DecryptNonEncryptedPDF", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "decrypted_nonenc.pdf")
 
+		// pdfcpu v0.11.1 rejects decryption of unencrypted files
+		// ("pdfcpu: this file is not encrypted").
 		err := DecryptPDF(pdfPath, outputPath, "anypassword", nil)
-		// This might succeed or fail depending on pdfcpu implementation
-		if err != nil {
-			t.Logf("Decrypting non-encrypted PDF returned error (may be expected): %v", err)
+		if err == nil {
+			t.Fatalf("Expected error when decrypting a non-encrypted PDF, got nil")
 		}
 	})
 
@@ -413,6 +448,25 @@ func TestAddWatermark(t *testing.T) {
 		err = ValidatePDF(outputPath, nil)
 		if err != nil {
 			t.Fatalf("Watermarked PDF is invalid: %v", err)
+		}
+
+		// Watermarking must not change the page count
+		inputPages := getPageCount(t, pdfPath)
+		if pageCount := getPageCount(t, outputPath); pageCount != inputPages {
+			t.Fatalf("Expected watermarked PDF to have %d pages, got %d", inputPages, pageCount)
+		}
+
+		// A stamp changes the file content
+		inputBytes, err := os.ReadFile(pdfPath)
+		if err != nil {
+			t.Fatalf("Failed to read input PDF: %v", err)
+		}
+		outputBytes, err := os.ReadFile(outputPath)
+		if err != nil {
+			t.Fatalf("Failed to read watermarked PDF: %v", err)
+		}
+		if bytes.Equal(inputBytes, outputBytes) {
+			t.Fatalf("Expected watermarked PDF to differ from input, but bytes are identical")
 		}
 	})
 
@@ -463,6 +517,10 @@ func TestAddWatermark(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to add watermark with special characters: %v", err)
 		}
+
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			t.Fatalf("Watermarked PDF file was not created")
+		}
 	})
 
 	// Test 5: Add watermark with long text
@@ -473,6 +531,10 @@ func TestAddWatermark(t *testing.T) {
 		err := AddWatermark(pdfPath, outputPath, watermarkText, "", nil)
 		if err != nil {
 			t.Fatalf("Failed to add long watermark: %v", err)
+		}
+
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			t.Fatalf("Watermarked PDF file was not created")
 		}
 	})
 }
@@ -541,7 +603,7 @@ func TestValidatePDF(t *testing.T) {
 		}
 	})
 
-	// Test 5: Validate with custom config
+	// Test 5: Validate with custom config (relaxed validation mode)
 	t.Run("ValidateWithConfig", func(t *testing.T) {
 		pdfPath := createTestPDF(t)
 
@@ -552,9 +614,8 @@ func TestValidatePDF(t *testing.T) {
 		}
 
 		err := ValidatePDF(pdfPath, config)
-		// Validation mode None might skip validation
 		if err != nil {
-			t.Logf("Validation with None mode returned: %v", err)
+			t.Fatalf("Relaxed validation failed for known-valid PDF: %v", err)
 		}
 	})
 }
@@ -582,8 +643,26 @@ func TestOptimizePDF(t *testing.T) {
 			t.Fatalf("Failed to optimize PDF: %v", err)
 		}
 
-		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
-			t.Fatalf("Optimized PDF file was not created")
+		outputInfo, err := os.Stat(outputPath)
+		if err != nil {
+			t.Fatalf("Optimized PDF file was not created: %v", err)
+		}
+
+		// Optimization must not grow the file materially. pdfcpu adds a
+		// small fixed overhead (producer metadata, rewritten xref), which
+		// dominates on tiny fixtures, so allow a modest absolute margin.
+		inputInfo, err := os.Stat(pdfPath)
+		if err != nil {
+			t.Fatalf("Failed to stat input PDF: %v", err)
+		}
+		if outputInfo.Size() > inputInfo.Size()+1024 {
+			t.Fatalf("Expected optimized PDF (%d bytes) to be no larger than input (%d bytes) plus overhead",
+				outputInfo.Size(), inputInfo.Size())
+		}
+
+		// The optimized document must preserve the page count
+		if got := getPageCount(t, outputPath); got != 1 {
+			t.Fatalf("Expected optimized PDF to have 1 page, got %d", got)
 		}
 
 		// Validate optimized PDF
@@ -616,6 +695,10 @@ func TestOptimizePDF(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to optimize with config: %v", err)
 		}
+
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			t.Fatalf("Optimized PDF file was not created")
+		}
 	})
 }
 
@@ -646,6 +729,14 @@ func TestRotatePages(t *testing.T) {
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			t.Fatalf("Rotated PDF file was not created")
 		}
+
+		// A 90-degree rotation swaps the page's effective width and height
+		inW, inH := pageDims(t, ctx, pdfPath, 0)
+		outW, outH := pageDims(t, ctx, outputPath, 0)
+		if math.Abs(outW-inH) > 0.5 || math.Abs(outH-inW) > 0.5 {
+			t.Fatalf("Expected 90-degree rotation to swap dimensions %.1fx%.1f, got %.1fx%.1f",
+				inW, inH, outW, outH)
+		}
 	})
 
 	// Test 2: Rotate pages 180 degrees
@@ -656,6 +747,14 @@ func TestRotatePages(t *testing.T) {
 		err := RotatePages(pdfPath, outputPath, pageRanges, 180, nil)
 		if err != nil {
 			t.Fatalf("Failed to rotate pages 180 degrees: %v", err)
+		}
+
+		// A 180-degree rotation leaves the page dimensions unchanged
+		inW, inH := pageDims(t, ctx, pdfPath, 0)
+		outW, outH := pageDims(t, ctx, outputPath, 0)
+		if math.Abs(outW-inW) > 0.5 || math.Abs(outH-inH) > 0.5 {
+			t.Fatalf("Expected 180-degree rotation to keep dimensions %.1fx%.1f, got %.1fx%.1f",
+				inW, inH, outW, outH)
 		}
 	})
 
@@ -692,15 +791,20 @@ func TestRotatePages(t *testing.T) {
 		}
 	})
 
-	// Test 6: Rotate invalid page range (error case)
+	// Test 6: Rotate invalid page range (no-op case)
 	t.Run("RotateInvalidPageRange", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "rotated_invalid_range.pdf")
 		pageRanges := []string{"999"}
 
+		// pdfcpu v0.11.1 silently drops out-of-range page numbers: the
+		// rotation becomes a no-op and the output is still written.
 		err := RotatePages(pdfPath, outputPath, pageRanges, 90, nil)
-		// This might succeed or fail depending on pdfcpu implementation
 		if err != nil {
-			t.Logf("Rotate with invalid page range returned: %v", err)
+			t.Fatalf("Expected out-of-range rotation to succeed as a no-op, got: %v", err)
+		}
+
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			t.Fatalf("Rotated PDF file was not created")
 		}
 	})
 }
@@ -738,6 +842,10 @@ func TestExtractPages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Extracted PDF is invalid: %v", err)
 		}
+
+		if pageCount := getPageCount(t, outputPath); pageCount != 1 {
+			t.Fatalf("Expected extracted PDF to have 1 page, got %d", pageCount)
+		}
 	})
 
 	// Test 2: Extract pages with custom config
@@ -757,6 +865,10 @@ func TestExtractPages(t *testing.T) {
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			t.Fatalf("Extracted PDF file was not created")
 		}
+
+		if pageCount := getPageCount(t, outputPath); pageCount != 1 {
+			t.Fatalf("Expected extracted PDF to have 1 page, got %d", pageCount)
+		}
 	})
 
 	// Test 3: Extract page range
@@ -772,9 +884,14 @@ func TestExtractPages(t *testing.T) {
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			t.Fatalf("Extracted PDF file was not created")
 		}
+
+		// Pages 2-4 of a 5-page document -> 3 pages
+		if pageCount := getPageCount(t, outputPath); pageCount != 3 {
+			t.Fatalf("Expected extracted PDF to have 3 pages, got %d", pageCount)
+		}
 	})
 
-	// Test 3: Extract multiple ranges
+	// Test 4: Extract multiple ranges
 	t.Run("ExtractMultipleRanges", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "extracted_multi.pdf")
 		pageRanges := []string{"1", "3", "5"}
@@ -783,9 +900,19 @@ func TestExtractPages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to extract multiple ranges: %v", err)
 		}
+
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			t.Fatalf("Extracted PDF file was not created")
+		}
+
+		// All requested ranges are merged into the single output:
+		// pages 1, 3 and 5 -> 3 pages
+		if pageCount := getPageCount(t, outputPath); pageCount != 3 {
+			t.Fatalf("Expected extracted PDF to have 3 pages, got %d", pageCount)
+		}
 	})
 
-	// Test 4: Extract non-existent file (error case)
+	// Test 5: Extract non-existent file (error case)
 	t.Run("ExtractNonExistentFile", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "extracted_error.pdf")
 		pageRanges := []string{"1"}
@@ -796,14 +923,17 @@ func TestExtractPages(t *testing.T) {
 		}
 	})
 
-	// Test 5: Extract invalid page range (error case)
+	// Test 6: Extract invalid page range (error case)
 	t.Run("ExtractInvalidPageRange", func(t *testing.T) {
 		outputPath := filepath.Join(dir, "extracted_invalid.pdf")
 		pageRanges := []string{"999"}
 
+		// pdfcpu v0.11.1 silently drops out-of-range page numbers, producing
+		// an empty selection and extracting no files; ExtractPages then fails
+		// because no files were extracted.
 		err := ExtractPages(pdfPath, outputPath, pageRanges, nil)
 		if err == nil {
-			t.Logf("Extract with invalid page range succeeded (may be expected)")
+			t.Fatalf("Expected error for out-of-range page selection, got nil")
 		}
 	})
 }
@@ -856,9 +986,10 @@ func TestGetPDFInfo(t *testing.T) {
 		}
 	})
 
-	// Test 3: Get info with custom config
-	t.Run("GetInfoWithConfig", func(t *testing.T) {
+	// Test 3: Get info with custom config (relaxed validation mode)
+	t.Run("GetInfoWithRelaxedValidation", func(t *testing.T) {
 		conf := model.NewDefaultConfiguration()
+		conf.ValidationMode = model.ValidationRelaxed
 		config := &PDFCPUConfig{
 			Config: conf,
 		}
@@ -936,7 +1067,7 @@ func TestGetPDFInfo(t *testing.T) {
 		t.Logf("PDF Info with metadata: %+v", info)
 	})
 
-	// Test 8: Test GetPDFInfo with PDF that has Info dict (test metadata extraction)
+	// Test 6: Test GetPDFInfo with PDF that has Info dict (test metadata extraction)
 	t.Run("GetInfoWithInfoDict", func(t *testing.T) {
 		// Create a multi-page PDF to test different code paths
 		multiPagePath := createMultiPagePDF(t, ctx, dir, 3)
@@ -972,33 +1103,14 @@ func TestGetPDFInfo(t *testing.T) {
 		}
 	})
 
-	// Test 6: Get info with custom config
-	t.Run("GetInfoWithConfig", func(t *testing.T) {
-		conf := model.NewDefaultConfiguration()
-		conf.ValidationMode = model.ValidationRelaxed
-		config := &PDFCPUConfig{
-			Config: conf,
-		}
-
-		info, err := GetPDFInfo(pdfPath, config)
-		if err != nil {
-			t.Fatalf("Failed to get PDF info with config: %v", err)
-		}
-
-		if info == nil {
-			t.Fatalf("PDF info is nil")
-		}
-	})
-
 	// Test 7: Test error path - file open failure (test error handling)
 	t.Run("GetInfoFileOpenError", func(t *testing.T) {
-		// Create a path that will fail to open (directory instead of file)
+		// A directory instead of a file: os.Stat succeeds but reading the
+		// PDF context fails, so GetPDFInfo must return an error.
 		dirPath := dir
 		_, err := GetPDFInfo(dirPath, nil)
 		if err == nil {
-			t.Logf("GetPDFInfo on directory may succeed or fail depending on pdfcpu behavior")
-		} else {
-			t.Logf("Got expected error for directory path: %v", err)
+			t.Fatalf("Expected error for directory path, got nil")
 		}
 	})
 }
@@ -1088,38 +1200,107 @@ func TestPDFCUBoundErrorPaths(t *testing.T) {
 	}
 }
 
-// Helper function to create a test PDF file with custom content
+// Helper function to create a test PDF file with custom content.
+//
+// The PDF is built programmatically (mirroring createTestPDF in
+// helpers_test.go) so that all cross-reference offsets, the stream
+// /Length, and the startxref value are computed from the actual bytes
+// written. The content string is embedded in the single page's content
+// stream, so files created with different content are distinguishable
+// via text extraction. The content must not contain PDF string
+// delimiters (parentheses or backslashes).
 func createTestPDFFile(t *testing.T, path, content string) {
 	t.Helper()
 
-	ctx, err := NewContext()
-	if err != nil {
-		t.Fatalf("Failed to create context: %v", err)
-	}
-	defer ctx.Drop()
+	var buf bytes.Buffer
 
-	writer, err := NewPDFWriter(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create PDF writer: %v", err)
-	}
-	defer writer.Close()
+	// Header
+	buf.WriteString("%PDF-1.4\n")
 
-	_, err = writer.AddPage(612, 792) // US Letter
-	if err != nil {
-		t.Fatalf("Failed to add page: %v", err)
+	// The content stream body; its /Length is computed from the real bytes.
+	streamContent := fmt.Sprintf("BT\n/F1 12 Tf\n50 750 Td\n(%s) Tj\nET\n", content)
+
+	// Object bodies, in object-number order (1..5).
+	objects := []string{
+		// 1: Catalog
+		"<<\n/Type /Catalog\n/Pages 2 0 R\n>>\n",
+		// 2: Pages
+		"<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\n",
+		// 3: Page (US Letter)
+		"<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 612 792]\n/Contents 4 0 R\n/Resources <<\n/ProcSet [/PDF /Text]\n/Font <<\n/F1 5 0 R\n>>\n>>\n>>\n",
+		// 4: Content stream
+		fmt.Sprintf("<<\n/Length %d\n>>\nstream\n%sendstream\n", len(streamContent), streamContent),
+		// 5: Font
+		"<<\n/Type /Font\n/Subtype /Type1\n/BaseFont /Helvetica\n>>\n",
 	}
 
-	err = writer.Save(path)
-	if err != nil {
-		t.Fatalf("Failed to save PDF: %v", err)
+	// Write each object, recording its actual byte offset.
+	offsets := make([]int, len(objects))
+	for i, body := range objects {
+		offsets[i] = buf.Len()
+		fmt.Fprintf(&buf, "%d 0 obj\n%sendobj\n", i+1, body)
 	}
+
+	// Cross-reference table. Each entry must be exactly 20 bytes:
+	// 10-digit offset, space, 5-digit generation, space, keyword, space, \n.
+	startxref := buf.Len()
+	fmt.Fprintf(&buf, "xref\n0 %d\n", len(objects)+1)
+	buf.WriteString("0000000000 65535 f \n")
+	for _, off := range offsets {
+		fmt.Fprintf(&buf, "%010d %05d n \n", off, 0)
+	}
+
+	// Trailer with the real startxref offset.
+	fmt.Fprintf(&buf, "trailer\n<<\n/Size %d\n/Root 1 0 R\n>>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, startxref)
+
+	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
+		t.Fatalf("Failed to write PDF file: %v", err)
+	}
+}
+
+// getPageCount returns the page count of a PDF as reported by GetPDFInfo.
+func getPageCount(t *testing.T, path string) int {
+	t.Helper()
+
+	info, err := GetPDFInfo(path, nil)
+	if err != nil {
+		t.Fatalf("Failed to get PDF info for %s: %v", path, err)
+	}
+
+	pageCount, ok := info["pageCount"].(int)
+	if !ok {
+		t.Fatalf("PDF info missing pageCount for %s", path)
+	}
+
+	return pageCount
+}
+
+// pageDims opens a PDF with MuPDF and returns the width and height of the
+// given zero-based page.
+func pageDims(t *testing.T, ctx *Context, path string, pageNum int) (float64, float64) {
+	t.Helper()
+
+	doc, err := OpenDocument(ctx, path)
+	if err != nil {
+		t.Fatalf("Failed to open document %s: %v", path, err)
+	}
+	defer doc.Close()
+
+	page, err := doc.LoadPage(pageNum)
+	if err != nil {
+		t.Fatalf("Failed to load page %d of %s: %v", pageNum, path, err)
+	}
+	defer page.Close()
+
+	bound := page.Bound()
+	return bound.X1 - bound.X0, bound.Y1 - bound.Y0
 }
 
 // Helper function to create a multi-page PDF
 func createMultiPagePDF(t *testing.T, ctx *Context, dir string, pageCount int) string {
 	t.Helper()
 
-	pdfPath := filepath.Join(dir, "multipage.pdf")
+	pdfPath := filepath.Join(dir, fmt.Sprintf("multipage_%d.pdf", pageCount))
 
 	writer, err := NewPDFWriter(ctx)
 	if err != nil {

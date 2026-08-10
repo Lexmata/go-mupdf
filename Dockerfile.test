@@ -41,15 +41,19 @@ COPY . .
 # Configure git for submodule operations
 RUN git config --global --add safe.directory /workspace
 
-# Initialize and build MuPDF from source
-RUN git submodule update --init --recursive || echo "Submodule init failed, will be handled by build.go"
+# NOTE: .dockerignore excludes .git, so `git submodule update` cannot work inside
+# the image. The MuPDF submodule must be checked out on the host before building;
+# COPY above brings the host checkout into the image.
+RUN test -d third_party/mupdf/include || (echo "ERROR: third_party/mupdf submodule not checked out on host" && exit 1)
 RUN if [ -d "third_party/mupdf" ]; then \
         echo "Building MuPDF from source..." && \
         cd third_party/mupdf && \
-        make -j$(nproc) libs && \
+        make -j$(nproc) USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs && \
         cd ../.. && \
         echo "MuPDF build complete. Verifying libraries..." && \
-        ls -la third_party/mupdf/build/release/*.a; \
+        ls -la third_party/mupdf/build/release/*.a && \
+        test -f third_party/mupdf/build/release/libmupdf.a && \
+        test -f third_party/mupdf/build/release/libmupdf-third.a; \
     fi
 
 # Default command runs all tests

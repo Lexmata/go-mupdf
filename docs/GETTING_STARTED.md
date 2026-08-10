@@ -187,7 +187,10 @@ defer ctx.Drop() // Essential for memory management
 
 **Key Points:**
 - Required for all operations
-- Thread-safe but create separate contexts for goroutines
+- **Not** thread-safe: a `Context` must never be shared across goroutines.
+  Create one `Context` per goroutine.
+- Documents, Pages, and every other object created from a `Context` inherit
+  that restriction — they belong to the goroutine that owns the `Context`.
 - Always call `Drop()` when finished
 - Use `defer` for automatic cleanup
 
