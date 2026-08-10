@@ -23,8 +23,8 @@ func main() {
 	// Example: Create a simple PDF
 	createSimplePDF(ctx)
 
-	// If you have a PDF file, you can also read it
-	// readExistingPDF(ctx, "example.pdf")
+	// Read back the PDF we just created
+	readExistingPDF(ctx, "output.pdf")
 
 	fmt.Println("🎉 Example completed successfully!")
 }
@@ -52,10 +52,9 @@ func createSimplePDF(ctx *mupdf.Context) {
 	// Save the document
 	err = writer.Save("output.pdf")
 	if err != nil {
-		log.Printf("Note: Save failed (this is expected in example): %v", err)
-	} else {
-		fmt.Println("✅ PDF saved to output.pdf")
+		log.Fatalf("Failed to save PDF: %v", err)
 	}
+	fmt.Println("✅ PDF saved to output.pdf")
 
 	fmt.Println("✅ PDF creation example completed")
 }
@@ -66,8 +65,7 @@ func readExistingPDF(ctx *mupdf.Context, filename string) {
 	// Open the document
 	doc, err := mupdf.OpenDocument(ctx, filename)
 	if err != nil {
-		log.Printf("Failed to open PDF (this is expected if file doesn't exist): %v", err)
-		return
+		log.Fatalf("Failed to open PDF %s: %v", filename, err)
 	}
 	defer doc.Close()
 
@@ -93,6 +91,14 @@ func readExistingPDF(ctx *mupdf.Context, filename string) {
 		defer textPage.Close()
 
 		text := textPage.String()
+		if text == "" {
+			// AddPage creates a genuinely blank page, so a document
+			// produced by createSimplePDF has no text to extract.
+			// This is the expected result here, not a failure.
+			fmt.Println("✅ Extracted text: (none - the page is blank)")
+			return
+		}
+
 		if len(text) > 100 {
 			text = text[:100] + "..."
 		}

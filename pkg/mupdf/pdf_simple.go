@@ -20,18 +20,34 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
-#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third  -lm
 
 #include <stdlib.h>
 #include <string.h>
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
-// Simple PDF page addition that manually manages the page tree
-pdf_page* go_mupdf_simple_add_page(fz_context *ctx, pdf_document *doc, float width, float height, char **out_error) {
+// Simple PDF page addition that manually manages the page tree. After the
+// page object is linked into the tree, the page is loaded via pdf_load_page
+// so the returned handle is a properly refcounted fz_page-derived page.
+// The new page's index is returned via out_page_num.
+pdf_page* go_mupdf_simple_add_page(fz_context *ctx, pdf_document *doc, float width, float height, int *out_page_num, char **out_error) {
     pdf_page *page = NULL;
+    pdf_obj *page_obj = NULL;
+    pdf_obj *mediabox = NULL;
+    pdf_obj *resources = NULL;
+    pdf_obj *procset = NULL;
+    pdf_obj *contents_obj = NULL;
+    fz_buffer *contents = NULL;
     *out_error = NULL;
+    *out_page_num = -1;
+
+    fz_var(page);
+    fz_var(page_obj);
+    fz_var(mediabox);
+    fz_var(resources);
+    fz_var(procset);
+    fz_var(contents_obj);
+    fz_var(contents);
 
     fz_try(ctx) {
         // Get root and pages objects
@@ -40,30 +56,29 @@ pdf_page* go_mupdf_simple_add_page(fz_context *ctx, pdf_document *doc, float wid
         pdf_obj *kids = pdf_dict_get(ctx, pages, PDF_NAME(Kids));
 
         // Create the page object
-        pdf_obj *page_obj = pdf_add_new_dict(ctx, doc, 5);
+        page_obj = pdf_add_new_dict(ctx, doc, 5);
         pdf_dict_put_name(ctx, page_obj, PDF_NAME(Type), "Page");
         pdf_dict_put(ctx, page_obj, PDF_NAME(Parent), pages);
 
-        // Set media box
-        pdf_obj *mediabox = pdf_new_array(ctx, doc, 4);
-        pdf_array_push_int(ctx, mediabox, 0);
-        pdf_array_push_int(ctx, mediabox, 0);
-        pdf_array_push_int(ctx, mediabox, (int)width);
-        pdf_array_push_int(ctx, mediabox, (int)height);
+        // Set media box (reals, so fractional point sizes are preserved)
+        mediabox = pdf_new_array(ctx, doc, 4);
+        pdf_array_push_real(ctx, mediabox, 0);
+        pdf_array_push_real(ctx, mediabox, 0);
+        pdf_array_push_real(ctx, mediabox, width);
+        pdf_array_push_real(ctx, mediabox, height);
         pdf_dict_put(ctx, page_obj, PDF_NAME(MediaBox), mediabox);
 
         // Create simple resources
-        pdf_obj *resources = pdf_add_new_dict(ctx, doc, 1);
-        pdf_obj *procset = pdf_new_array(ctx, doc, 2);
+        resources = pdf_add_new_dict(ctx, doc, 1);
+        procset = pdf_new_array(ctx, doc, 2);
         pdf_array_push_name(ctx, procset, "PDF");
         pdf_array_push_name(ctx, procset, "Text");
         pdf_dict_put(ctx, resources, PDF_NAME(ProcSet), procset);
         pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), resources);
 
-        // Create simple content stream
-        fz_buffer *contents = fz_new_buffer(ctx, 0);
-        fz_append_string(ctx, contents, "BT /F1 12 Tf 50 750 Td (Hello World) Tj ET");
-        pdf_obj *contents_obj = pdf_add_stream(ctx, doc, contents, NULL, 0);
+        // Create an empty content stream; content can be added later
+        contents = fz_new_buffer(ctx, 0);
+        contents_obj = pdf_add_stream(ctx, doc, contents, NULL, 0);
         pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), contents_obj);
 
         // Add page to kids array
@@ -73,12 +88,17 @@ pdf_page* go_mupdf_simple_add_page(fz_context *ctx, pdf_document *doc, float wid
         int count = pdf_dict_get_int(ctx, pages, PDF_NAME(Count));
         pdf_dict_put_int(ctx, pages, PDF_NAME(Count), count + 1);
 
-        // Create the page structure
-        page = fz_malloc_struct(ctx, pdf_page);
-        page->obj = pdf_keep_obj(ctx, page_obj);
-        page->doc = doc;
-
-        // Clean up
+        // Load the freshly inserted page so we return a properly
+        // refcounted fz_page-derived handle
+        *out_page_num = count;
+        page = pdf_load_page(ctx, doc, count);
+    }
+    fz_always(ctx) {
+        pdf_drop_obj(ctx, page_obj);
+        pdf_drop_obj(ctx, mediabox);
+        pdf_drop_obj(ctx, resources);
+        pdf_drop_obj(ctx, procset);
+        pdf_drop_obj(ctx, contents_obj);
         fz_drop_buffer(ctx, contents);
     }
     fz_catch(ctx) {
@@ -115,7 +135,7 @@ import (
 //   - Direct PDF object dictionary creation
 //   - Manual page tree management (Kids array updates)
 //   - Resource dictionary construction
-//   - Content stream creation with sample text
+//   - Empty content stream creation
 //   - Page count updates in the Pages object
 //
 // This implementation provides:
@@ -124,8 +144,9 @@ import (
 //   - Debugging capabilities for PDF issues
 //   - Alternative when higher-level functions fail
 //
-// The created page includes a simple "Hello World" content stream
-// as a demonstration of content creation.
+// The created page includes an empty content stream; content can be
+// added later by the caller. An error is returned for invalid
+// (negative or zero) dimensions.
 //
 // Example:
 //
@@ -137,10 +158,22 @@ import (
 //	defer page.Close()
 //
 //	// Page created with manual PDF object management
-//	// Contains sample "Hello World" text content
+//
+// Deprecated: use [PDFWriter.AddPage]. SimpleAddPage produces an
+// equivalent page via manual object manipulation and is retained for
+// compatibility and debugging; it will be removed in v2.0.0.
 func (writer *PDFWriter) SimpleAddPage(width, height float64) (*PDFPage, error) {
+	if writer.writer == nil || writer.ctx == nil || writer.ctx.ctx == nil {
+		return nil, Error{message: "PDF writer is closed or invalid"}
+	}
+
+	if width <= 0 || height <= 0 {
+		return nil, Error{message: "invalid page dimensions: width and height must be positive"}
+	}
+
 	var cError *C.char
-	page := C.go_mupdf_simple_add_page(writer.ctx.ctx, writer.writer, C.float(width), C.float(height), &cError)
+	var cPageNum C.int
+	page := C.go_mupdf_simple_add_page(writer.ctx.ctx, writer.writer, C.float(width), C.float(height), &cPageNum, &cError)
 
 	if cError != nil {
 		defer C.free(unsafe.Pointer(cError))
@@ -148,18 +181,10 @@ func (writer *PDFWriter) SimpleAddPage(width, height float64) (*PDFPage, error) 
 	}
 
 	if page == nil {
-		return nil, Error{message: "Simple add page returned null"}
+		return nil, Error{message: "failed to add page: C helper returned null page"}
 	}
 
-	// Get the current page count
-	pageCount := int(C.pdf_count_pages(writer.ctx.ctx, writer.writer))
-	pageNum := pageCount - 1
-
-	if pageNum < 0 {
-		pageNum = 0
-	}
-
-	result := &PDFPage{ctx: writer.ctx, doc: nil, page: page, num: pageNum}
+	result := &PDFPage{ctx: writer.ctx, doc: nil, writer: writer, page: page, num: int(cPageNum)}
 	runtime.SetFinalizer(result, func(p *PDFPage) {
 		if p != nil {
 			p.Close()

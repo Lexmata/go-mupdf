@@ -20,17 +20,24 @@ check_file() {
 
 # Function to validate YAML syntax
 validate_yaml() {
-    if command -v yamllint >/dev/null 2>&1; then
-        echo "📋 Validating YAML syntax..."
-        yamllint bitbucket-pipelines.yml
-        if [ $? -eq 0 ]; then
-            echo "✅ YAML syntax is valid"
+    echo "📋 Validating YAML syntax..."
+    if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+        if python3 -c 'import yaml,sys; yaml.safe_load(open("bitbucket-pipelines.yml"))'; then
+            echo "✅ YAML parses successfully (python3/pyyaml)"
+        else
+            echo "❌ YAML syntax errors found"
+            return 1
+        fi
+    elif command -v yamllint >/dev/null 2>&1; then
+        # Optional linter fallback when pyyaml is unavailable
+        if yamllint bitbucket-pipelines.yml; then
+            echo "✅ YAML syntax is valid (yamllint)"
         else
             echo "❌ YAML syntax errors found"
             return 1
         fi
     else
-        echo "⚠️  yamllint not available, skipping syntax validation"
+        echo "⚠️  No YAML validator available (python3+pyyaml or yamllint), skipping syntax validation (optional check)"
     fi
 }
 
@@ -68,27 +75,6 @@ check_pipeline_structure() {
     fi
 }
 
-# Function to validate dependencies
-check_dependencies() {
-    echo "📦 Checking pipeline dependencies..."
-    
-    # Check for required commands in pipeline
-    REQUIRED_COMMANDS=(
-        "apt-get"
-        "go"
-        "make"
-        "gcc"
-    )
-    
-    for cmd in "${REQUIRED_COMMANDS[@]}"; do
-        if grep -q "$cmd" bitbucket-pipelines.yml; then
-            echo "✅ $cmd command referenced in pipeline"
-        else
-            echo "⚠️  $cmd command not found in pipeline"
-        fi
-    done
-}
-
 # Function to check cache configuration
 check_cache_config() {
     echo "🗄️  Checking cache configuration..."
@@ -113,41 +99,44 @@ check_cache_config() {
     fi
 }
 
-# Function to validate scripts
+# Function to validate helper scripts referenced by the pipeline
 validate_scripts() {
-    echo "📜 Validating helper scripts..."
-    
-    SCRIPTS=(
-        "scripts/ci-setup.sh"
-        "scripts/test-runner.sh"
-    )
-    
-    for script in "${SCRIPTS[@]}"; do
-        if [ -f "$script" ]; then
-            echo "✅ $script exists"
-            
-            # Check if executable
-            if [ -x "$script" ]; then
-                echo "✅ $script is executable"
-            else
-                echo "⚠️  $script is not executable"
-                chmod +x "$script"
-                echo "✅ Made $script executable"
-            fi
-            
-            # Basic syntax check
-            bash -n "$script"
-            if [ $? -eq 0 ]; then
-                echo "✅ $script syntax is valid"
-            else
-                echo "❌ $script has syntax errors"
-                return 1
-            fi
+    echo "📜 Validating helper scripts referenced by bitbucket-pipelines.yml..."
+
+    local scripts script failed=false
+    scripts=$(grep -oE 'scripts/[a-z-]+\.sh' bitbucket-pipelines.yml | sort -u)
+
+    if [ -z "$scripts" ]; then
+        echo "⚠️  No helper scripts referenced in bitbucket-pipelines.yml"
+        return 0
+    fi
+
+    for script in $scripts; do
+        if [ ! -f "$script" ]; then
+            echo "❌ $script is referenced by the pipeline but missing"
+            failed=true
+            continue
+        fi
+        echo "✅ $script exists"
+
+        # Check if executable -- report only, do not modify during validation
+        if [ -x "$script" ]; then
+            echo "✅ $script is executable"
         else
-            echo "❌ $script missing"
-            return 1
+            echo "❌ $script is not executable (fix with: chmod +x $script)"
+            failed=true
+        fi
+
+        # Basic syntax check
+        if bash -n "$script"; then
+            echo "✅ $script syntax is valid"
+        else
+            echo "❌ $script has syntax errors"
+            failed=true
         fi
     done
+
+    [ "$failed" = false ]
 }
 
 # Function to check project structure
@@ -181,80 +170,55 @@ check_project_structure() {
     done
 }
 
-# Function to simulate pipeline steps
-simulate_pipeline() {
-    echo "🎭 Simulating pipeline steps..."
-    
-    # Check if we can run the setup script
-    if [ -f "scripts/ci-setup.sh" ]; then
-        echo "📋 Testing ci-setup.sh (dry run)..."
-        # Run setup script with dry-run if supported
-        # For now, just check syntax
-        bash -n scripts/ci-setup.sh
-        if [ $? -eq 0 ]; then
-            echo "✅ ci-setup.sh can be executed"
-        else
-            echo "❌ ci-setup.sh has issues"
-            return 1
-        fi
-    fi
-    
-    # Check if we can run the test script
-    if [ -f "scripts/test-runner.sh" ]; then
-        echo "📋 Testing test-runner.sh (dry run)..."
-        bash -n scripts/test-runner.sh
-        if [ $? -eq 0 ]; then
-            echo "✅ test-runner.sh can be executed"
-        else
-            echo "❌ test-runner.sh has issues"
-            return 1
-        fi
+# Validation result tracking (populated by run_check, consumed by generate_report)
+CHECK_RESULTS=()
+CHECKS_PASSED=0
+CHECKS_FAILED=0
+VALIDATION_PASSED=true
+
+# Function to run a named check and record its result
+run_check() {
+    local name=$1
+    shift
+
+    if "$@"; then
+        CHECK_RESULTS+=("✅ PASS: $name")
+        CHECKS_PASSED=$((CHECKS_PASSED + 1))
+    else
+        CHECK_RESULTS+=("❌ FAIL: $name")
+        CHECKS_FAILED=$((CHECKS_FAILED + 1))
+        VALIDATION_PASSED=false
     fi
 }
 
-# Function to generate validation report
+# Function to generate validation report from the actual check results
 generate_report() {
     echo "📊 Generating validation report..."
-    
+
     REPORT_FILE="pipeline-validation-report.txt"
-    
-    cat > "$REPORT_FILE" << EOF
-# Bitbucket Pipeline Validation Report
-Generated: $(date)
 
-## Configuration Files
-- bitbucket-pipelines.yml: $([ -f "bitbucket-pipelines.yml" ] && echo "✅ Present" || echo "❌ Missing")
-- CI/CD Documentation: $([ -f "docs/CI_CD_PIPELINE.md" ] && echo "✅ Present" || echo "❌ Missing")
-
-## Helper Scripts
-- CI Setup Script: $([ -f "scripts/ci-setup.sh" ] && echo "✅ Present" || echo "❌ Missing")
-- Test Runner Script: $([ -f "scripts/test-runner.sh" ] && echo "✅ Present" || echo "❌ Missing")
-
-## Project Structure
-- Go Module: $([ -f "go.mod" ] && echo "✅ Present" || echo "❌ Missing")
-- MuPDF Source: $([ -d "third_party/mupdf" ] && echo "✅ Present" || echo "❌ Missing")
-- Package Source: $([ -d "pkg/mupdf" ] && echo "✅ Present" || echo "❌ Missing")
-
-## Pipeline Features
-- Multi-branch Support: ✅ Configured
-- Pull Request Pipeline: ✅ Configured
-- Tag-based Releases: ✅ Configured
-- Caching Strategy: ✅ Configured
-- Test Coverage: ✅ Configured
-
-## Recommendations
-1. Test the pipeline with a small commit
-2. Monitor initial build times for cache effectiveness
-3. Review coverage reports after first successful run
-4. Consider adding notification hooks for failures
-
-## Next Steps
-1. Commit all pipeline files to repository
-2. Push to trigger first pipeline run
-3. Monitor build logs for any issues
-4. Adjust cache configurations if needed
-
-EOF
+    {
+        echo "# Bitbucket Pipeline Validation Report"
+        echo "Generated: $(date)"
+        echo ""
+        echo "## Check Results"
+        local result
+        for result in "${CHECK_RESULTS[@]}"; do
+            echo "- $result"
+        done
+        echo ""
+        echo "## Summary"
+        echo "- Checks passed: $CHECKS_PASSED"
+        echo "- Checks failed: $CHECKS_FAILED"
+        echo "- Overall: $([ "$VALIDATION_PASSED" = true ] && echo "✅ PASSED" || echo "❌ FAILED")"
+        echo ""
+        if [ "$VALIDATION_PASSED" != true ]; then
+            echo "## Next Steps"
+            echo "1. Fix the failed checks listed above"
+            echo "2. Re-run scripts/validate-pipeline.sh until all checks pass"
+            echo ""
+        fi
+    } > "$REPORT_FILE"
 
     echo "✅ Validation report generated: $REPORT_FILE"
 }
@@ -262,23 +226,19 @@ EOF
 # Main validation function
 main() {
     echo "Starting pipeline validation..."
-    
-    local validation_passed=true
-    
+
     # Run all validation checks
-    check_file "bitbucket-pipelines.yml" || validation_passed=false
-    validate_yaml || validation_passed=false
-    check_pipeline_structure || validation_passed=false
-    check_dependencies || validation_passed=false
-    check_cache_config || validation_passed=false
-    validate_scripts || validation_passed=false
-    check_project_structure || validation_passed=false
-    simulate_pipeline || validation_passed=false
-    
+    run_check "bitbucket-pipelines.yml present" check_file "bitbucket-pipelines.yml"
+    run_check "YAML syntax" validate_yaml
+    run_check "Pipeline structure" check_pipeline_structure
+    run_check "Cache configuration" check_cache_config
+    run_check "Helper scripts (exist, executable, valid syntax)" validate_scripts
+    run_check "Project structure" check_project_structure
+
     # Generate report
     generate_report
-    
-    if [ "$validation_passed" = true ]; then
+
+    if [ "$VALIDATION_PASSED" = true ]; then
         echo ""
         echo "🎉 All validations passed!"
         echo "✅ Pipeline is ready for deployment"

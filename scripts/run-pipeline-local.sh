@@ -1,6 +1,11 @@
 #!/bin/bash
 # Script to run Bitbucket Pipelines locally using Docker
 # This simulates the CI environment for debugging
+#
+# Reproducible pipeline steps: lint, test (both build MuPDF from
+# third_party/mupdf via scripts/setup-mupdf.sh, matching CI).
+# NOT reproducible here: the build-mupdf artifact steps and the dist/release
+# packaging steps, which depend on Bitbucket artifact/download infrastructure.
 
 set -e
 
@@ -11,8 +16,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default values
-IMAGE="golang:1.23"
+# Default values (IMAGE matches bitbucket-pipelines.yml)
+IMAGE="golang:1.24"
 STEP="test"
 MOUNT_DIR=$(pwd)
 
@@ -32,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --step STEP    Pipeline step to run (lint, test, default: test)"
-            echo "  --image IMAGE  Docker image to use (default: golang:1.23)"
+            echo "  --image IMAGE  Docker image to use (default: golang:1.24)"
             echo "  --help         Show this help message"
             echo ""
             echo "Examples:"
@@ -64,12 +69,13 @@ run_lint() {
         "${IMAGE}" \
         bash -c "
             set -e
-            apt-get update -qq
-            apt-get install -y -qq libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev > /dev/null
+            # Build MuPDF from the vendored source, exactly like CI does
+            # (the project links against third_party/mupdf/build/release, not system mupdf)
+            ./scripts/setup-mupdf.sh
 
             go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
             export PATH=\$PATH:\$(go env GOPATH)/bin
-            export GOTOOLCHAIN=local
+            export GOTOOLCHAIN=auto
 
             echo 'Checking code formatting with gofmt...'
             UNFORMATTED=\$(gofmt -l .)
@@ -109,22 +115,17 @@ run_test() {
         "${IMAGE}" \
         bash -c "
             set -e
-            apt-get update -qq
-            apt-get install -y -qq libmupdf-dev pkg-config libfreetype6-dev libjpeg-dev libpng-dev zlib1g-dev libjbig2dec-dev libopenjp2-7-dev libharfbuzz-dev libgumbo-dev libmujs-dev > /dev/null
-            ldconfig
-            echo 'Checking installed libraries...'
-            find /usr/lib -name '*harfbuzz*' 2>/dev/null | head -5
-            find /usr/lib -name '*mupdf*' 2>/dev/null | head -5
-            find /usr/lib -name '*extract*' 2>/dev/null | head -5
-            pkg-config --libs harfbuzz 2>&1 || echo 'pkg-config harfbuzz failed'
-            pkg-config --libs mupdf 2>&1 || echo 'pkg-config mupdf failed'
+            # Build MuPDF from the vendored source, exactly like CI does
+            # (the project links against third_party/mupdf/build/release, not system mupdf)
+            ./scripts/setup-mupdf.sh
+            echo 'Checking built MuPDF libraries...'
+            ls -la third_party/mupdf/build/release/*.a | head -3 || echo 'MuPDF libraries not found'
             export GO111MODULE=on
             export CGO_ENABLED=1
-            export GOOS=linux
-            export GOARCH=amd64
-            export GOTOOLCHAIN=local
+            export GOTOOLCHAIN=auto
+            export GOFLAGS=-buildvcs=false
             echo 'Running tests with race detection...'
-            go test -v -race ./...
+            go test -v -race ./pkg/mupdf/
 
             echo 'Running tests with coverage...'
             go test -v -race -coverprofile=coverage.out ./pkg/mupdf/

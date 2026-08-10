@@ -15,18 +15,28 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
-#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third  -lm
 
 #include <stdlib.h>
 #include <string.h>
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
-// Fixed PDF page addition
-pdf_page* go_mupdf_fixed_pdf_add_page(fz_context *ctx, pdf_document *doc, float width, float height, int rotate, char **out_error) {
+// Fixed PDF page addition - creates the page object, links it into the page
+// tree with pdf_insert_page, and returns a properly refcounted page handle
+// obtained via pdf_load_page. The new page's index is returned via
+// out_page_num.
+pdf_page* go_mupdf_fixed_pdf_add_page(fz_context *ctx, pdf_document *doc, float width, float height, int rotate, int *out_page_num, char **out_error) {
     pdf_page *page = NULL;
+    pdf_obj *resources = NULL;
+    pdf_obj *page_obj = NULL;
+    fz_buffer *contents = NULL;
     *out_error = NULL;
+    *out_page_num = -1;
+
+    fz_var(page);
+    fz_var(resources);
+    fz_var(page_obj);
+    fz_var(contents);
 
     fz_try(ctx) {
         // Create a new page dictionary
@@ -36,19 +46,22 @@ pdf_page* go_mupdf_fixed_pdf_add_page(fz_context *ctx, pdf_document *doc, float 
         mediabox.x1 = width;
         mediabox.y1 = height;
 
-        // Create resources and contents
-        pdf_obj *resources = pdf_add_new_dict(ctx, doc, 0);
-        fz_buffer *contents = fz_new_buffer(ctx, 0);
+        // Create resources and an empty content stream
+        resources = pdf_add_new_dict(ctx, doc, 0);
+        contents = fz_new_buffer(ctx, 0);
 
-        // Add the page to the document
-        pdf_obj *page_obj = pdf_add_page(ctx, doc, mediabox, rotate, resources, contents);
+        // Create the page object and link it into the page tree
+        page_obj = pdf_add_page(ctx, doc, mediabox, rotate, resources, contents);
+        pdf_insert_page(ctx, doc, -1, page_obj);
 
-        // Create a new page structure
-        page = fz_malloc_struct(ctx, pdf_page);
-        page->obj = pdf_keep_obj(ctx, page_obj);
-        page->doc = doc;
-
-        // Clean up
+        // Load the freshly inserted page so we return a properly
+        // refcounted fz_page-derived handle
+        *out_page_num = pdf_count_pages(ctx, doc) - 1;
+        page = pdf_load_page(ctx, doc, *out_page_num);
+    }
+    fz_always(ctx) {
+        pdf_drop_obj(ctx, resources);
+        pdf_drop_obj(ctx, page_obj);
         fz_drop_buffer(ctx, contents);
     }
     fz_catch(ctx) {
@@ -78,7 +91,8 @@ import (
 //
 // Returns:
 //   - *PDFPage: A new page with corrected implementation
-//   - error: An error if page creation fails
+//   - error: An error if page creation fails or the dimensions are
+//     invalid (negative or zero)
 //
 // Fixes addressed:
 //   - Improved memory management for PDF objects
@@ -86,39 +100,41 @@ import (
 //   - Corrected PDF page structure creation
 //   - Enhanced finalizer safety
 //
-// This implementation may be more stable than the standard AddPage()
-// method in certain scenarios, particularly those involving complex
-// PDF structures or memory-constrained environments.
-//
 // Example:
 //
-//	// Use fixed implementation when standard method has issues
 //	page, err := writer.FixedAddPage(612, 792)
 //	if err != nil {
 //	    return err
 //	}
 //	defer page.Close()
 //
-//	// Page created with improved implementation
+// Deprecated: use [PDFWriter.AddPage]. FixedAddPage now shares the same
+// pdf_add_page implementation as AddPage and offers no additional
+// stability; it is retained for compatibility and will be removed in
+// v2.0.0.
 func (writer *PDFWriter) FixedAddPage(width, height float64) (*PDFPage, error) {
+	if writer.writer == nil || writer.ctx == nil || writer.ctx.ctx == nil {
+		return nil, Error{message: "PDF writer is closed or invalid"}
+	}
+
+	if width <= 0 || height <= 0 {
+		return nil, Error{message: "invalid page dimensions: width and height must be positive"}
+	}
+
 	var cError *C.char
-	page := C.go_mupdf_fixed_pdf_add_page(writer.ctx.ctx, writer.writer, C.float(width), C.float(height), C.int(0), &cError)
+	var cPageNum C.int
+	page := C.go_mupdf_fixed_pdf_add_page(writer.ctx.ctx, writer.writer, C.float(width), C.float(height), C.int(0), &cPageNum, &cError)
 
 	if cError != nil {
 		defer C.free(unsafe.Pointer(cError))
 		return nil, Error{message: C.GoString(cError)}
 	}
 
-	// Get the page number (it's the last page in the document)
-	pageCount := int(C.pdf_count_pages(writer.ctx.ctx, writer.writer))
-	pageNum := pageCount - 1
-
-	// Ensure we have a valid page number
-	if pageNum < 0 {
-		pageNum = 0 // Default to the first page if we can't determine the correct number
+	if page == nil {
+		return nil, Error{message: "failed to add page: C helper returned null page"}
 	}
 
-	result := &PDFPage{ctx: writer.ctx, doc: nil, page: page, num: pageNum}
+	result := &PDFPage{ctx: writer.ctx, doc: nil, writer: writer, page: page, num: int(cPageNum)}
 	runtime.SetFinalizer(result, func(p *PDFPage) {
 		p.Close()
 	})

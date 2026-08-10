@@ -1,7 +1,7 @@
 # Makefile for Go MuPDF Wrapper
 # Provides convenient build targets
 
-.PHONY: help setup build test clean mupdf-build docker-build docker-test docker-quick docker-coverage docker-shell docker-clean dist dist-clean
+.PHONY: help setup build test clean clean-all mupdf-build docker-build docker-test docker-quick docker-coverage docker-shell docker-clean dist dist-clean
 
 # Default: build with source-built MuPDF
 help:
@@ -14,7 +14,8 @@ help:
 	@echo "  make build           - Build with source-built MuPDF"
 	@echo "  make test            - Run tests with source-built MuPDF"
 	@echo "  make mupdf-build     - Build MuPDF from source"
-	@echo "  make clean           - Clean build artifacts"
+	@echo "  make clean           - Clean project build artifacts (test cache, coverage, MuPDF build)"
+	@echo "  make clean-all       - Clean everything, including the machine-wide Go build cache"
 	@echo ""
 	@echo "Docker Testing (CI/CD simulation):"
 	@echo "  make docker-build    - Build Docker test image"
@@ -41,7 +42,9 @@ mupdf-build:
 		echo "Error: third_party/mupdf not found. Run: git submodule update --init --recursive"; \
 		exit 1; \
 	fi
-	cd third_party/mupdf && make -j$$(nproc) libs
+	cd third_party/mupdf && make -j$$(nproc) USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release libs
+	@test -f third_party/mupdf/build/release/libmupdf.a || (echo "Error: libmupdf.a was not built" && exit 1)
+	@test -f third_party/mupdf/build/release/libmupdf-third.a || (echo "Error: libmupdf-third.a was not built" && exit 1)
 
 # Build with source-built MuPDF
 build: setup
@@ -56,11 +59,18 @@ test: setup
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	go clean -cache
-	rm -f coverage.out
+	go clean -testcache
+	rm -f coverage.out coverage.html
 	@if [ -d "third_party/mupdf/build" ]; then \
 		cd third_party/mupdf && make clean; \
 	fi
+
+# Clean everything, including the machine-wide Go build cache
+# WARNING: `go clean -cache` wipes the shared Go build cache for ALL projects
+# on this machine, forcing full recompiles everywhere. Use sparingly.
+clean-all: clean
+	@echo "Cleaning Go build cache (machine-wide)..."
+	go clean -cache
 
 # Docker testing targets
 docker-build:

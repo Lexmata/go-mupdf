@@ -169,7 +169,7 @@ The setup process intelligently handles MuPDF libraries with multiple fallback m
    - Automatically detects your platform (linux-amd64, darwin-arm64, etc.)
    - Downloads matching release from Bitbucket Downloads
    - Extracts and installs in seconds
-   - **Available for:** Linux (amd64, arm64), macOS (amd64, arm64)
+   - **Available for:** linux-amd64 and linux-arm64 only — macOS and Windows fall back to building from source automatically
 
 3. **Build from Source** 🔨
    - Falls back if download fails or platform not supported
@@ -185,9 +185,10 @@ The scripts automatically detect:
 - **Version**: From VERSION file or git tags
 
 Example detected platforms:
-- `linux-amd64` - Linux on Intel/AMD 64-bit
-- `darwin-arm64` - macOS on Apple Silicon
-- `darwin-amd64` - macOS on Intel
+- `linux-amd64` - Linux on Intel/AMD 64-bit (pre-built libraries available)
+- `linux-arm64` - Linux on ARM 64-bit (pre-built libraries available)
+- `darwin-arm64` - macOS on Apple Silicon (builds from source)
+- `darwin-amd64` - macOS on Intel (builds from source)
 
 ### Download URLs
 

@@ -201,11 +201,13 @@ func TestErrorHandling(t *testing.T) {
 	}
 }
 
-func TestMemoryManagement(t *testing.T) {
+// TestRepeatedCreateCloseCycles exercises repeated create/use/close cycles of
+// every object type (it does not measure memory usage)
+func TestRepeatedCreateCloseCycles(t *testing.T) {
 	requireMuPDF(t)
 	skipIfCIorShort(t)
 
-	// This test checks for memory leaks by creating and destroying many objects
+	// Repeatedly create, use, and destroy the full object graph
 	for i := 0; i < 10; i++ {
 		func() {
 			ctx, err := NewContext()
@@ -246,6 +248,11 @@ func TestMemoryManagement(t *testing.T) {
 			doc, err := OpenDocument(ctx, pdfPath)
 			if err != nil {
 				t.Fatalf("Failed to open document: %v", err)
+			}
+
+			// Assert the saved page made it into the document
+			if pageCount := doc.CountPages(); pageCount != 1 {
+				t.Fatalf("Iteration %d: expected 1 page, got %d", i, pageCount)
 			}
 
 			// Load page

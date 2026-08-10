@@ -8,7 +8,7 @@
 // # Key Features
 //
 //   - Memory-safe operations with automatic cleanup via finalizers
-//   - Thread-safe concurrent operations
+//   - Concurrency support via one Context per goroutine
 //   - Comprehensive error handling and recovery
 //   - Support for PDF reading, writing, and manipulation
 //   - High-performance text extraction and page processing
@@ -55,11 +55,23 @@
 //   - Null pointer checks prevent segmentation faults
 //   - Resource lifecycle is clearly documented
 //
+// # Closed Objects
+//
+// Calling a method on a closed object is safe and never panics. The
+// convention is uniform across the package: a method that returns only
+// a value returns that type's zero value (0, "", or the zero Rect),
+// while a method that returns an error returns a non-nil error
+// describing the closed receiver. Close() and Drop() are idempotent.
+//
 // # Thread Safety
 //
-// MuPDF contexts are thread-safe, but individual documents and pages
-// should not be shared between goroutines without proper synchronization.
-// Create separate contexts for concurrent operations when needed.
+// A Context is NOT thread-safe and must not be shared across goroutines.
+// Contexts are created in MuPDF's single-threaded mode (no locking
+// primitives), so the supported concurrency pattern is one Context per
+// goroutine: each goroutine that needs MuPDF functionality creates its
+// own Context via NewContext. Documents, Pages, Writers, and other
+// objects are bound to the Context that created them and share its
+// restriction — use them only on the goroutine that owns their Context.
 //
 // # Error Handling
 //
@@ -78,5 +90,5 @@
 //   - text.go: Text extraction functionality
 //   - pdf.go: PDF-specific operations and creation
 //   - pdf_*.go: Specialized PDF implementations (debug, fix, simple)
-//   - test_helpers.go: Testing utilities and helpers
+//   - helpers_test.go: Testing utilities (test-only)
 package mupdf

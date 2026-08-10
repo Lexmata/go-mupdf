@@ -14,5 +14,8 @@
 // CGO Configuration:
 //
 //	CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
-//	LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third -lharfbuzz -lfreetype -ljpeg -lpng -lz -ljbig2dec -lopenjp2 -lm
+//	LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third -lm
+//
+// The third-party dependencies (harfbuzz, freetype, jpeg, etc.) are bundled
+// inside libmupdf-third.a, so no additional system libraries are linked.
 package mupdf

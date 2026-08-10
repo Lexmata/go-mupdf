@@ -14,21 +14,26 @@ This document describes the automated release process for the Go MuPDF wrapper p
 - **Automatic Upload**: Release artifacts to Bitbucket Downloads
 
 ### 2. Release Artifacts Generated
-- **Source Code**: Complete source archive with submodules
-- **Binary Tools**: Command-line utilities for Linux AMD64
-- **Documentation**: Complete docs package with examples
-- **Release Notes**: Auto-generated from changelog and build info
-- **Checksums**: SHA256 verification for all artifacts
+- **Static Library Packages**: `dist/go-mupdf-<version>-linux-amd64.tar.gz` and `dist/go-mupdf-<version>-linux-arm64.tar.gz` (pre-built MuPDF libraries and headers; version has no `v` prefix)
+- **Checksums**: A per-file `.tar.gz.sha256` alongside each package
+- **Coverage Data**: `release-coverage.out` from the release test run
+- **Upload**: Packages and checksums are uploaded to Bitbucket Downloads
 
 ## 🛠️ Using the Release Script
 
 ### Interactive Release Creation
 ```bash
-# Simple release
-./scripts/release.sh 1.1.0
+# Simple release with explicit version
+./scripts/release.sh 1.4.7
+
+# Auto-increment the version
+./scripts/release.sh --major    # Increment major version (X.0.0)
+./scripts/release.sh --minor    # Increment minor version (x.Y.0)
+./scripts/release.sh --patch    # Increment patch version (x.y.Z)
+./scripts/release.sh --pre      # Create pre-release (adds -rc.N suffix)
 
 # Test release process (dry run)
-./scripts/release.sh --dry-run 1.1.0
+./scripts/release.sh --dry-run 1.4.7
 
 # Get help
 ./scripts/release.sh --help
@@ -111,49 +116,42 @@ git push origin v1.1.0
 
 4. **Artifact Building**
    ```bash
-   # Directory structure created:
-   releases/
-   ├── source/           # Source code archives
-   ├── binaries/         # Compiled tools
-   ├── documentation/    # Docs and examples
-   ├── RELEASE_NOTES.md  # Generated release notes
-   └── SHA256SUMS        # Checksums for verification
+   # Directory structure created (for tag v1.4.7):
+   dist/
+   ├── go-mupdf-1.4.7-linux-amd64.tar.gz         # Static library package (amd64)
+   ├── go-mupdf-1.4.7-linux-amd64.tar.gz.sha256  # Checksum for the amd64 package
+   ├── go-mupdf-1.4.7-linux-arm64.tar.gz         # Static library package (arm64)
+   └── go-mupdf-1.4.7-linux-arm64.tar.gz.sha256  # Checksum for the arm64 package
    ```
+   Note: the version in the filenames has no `v` prefix (it is derived from the tag with the prefix stripped).
 
-5. **Release Notes Generation**
-   - Automatic extraction from CHANGELOG.md
-   - Build information and checksums
-   - Installation instructions
-   - System requirements
-
-6. **Artifact Upload** (Optional)
+5. **Artifact Upload**
    - Upload to Bitbucket Downloads section
-   - Requires BITBUCKET_DOWNLOADS_TOKEN environment variable
-   - Files available for public download
+   - Requires BITBUCKET_USERNAME and BITBUCKET_DOWNLOADS_TOKEN repository variables
+   - Files available for public download (also kept as pipeline artifacts)
 
 ## 📦 Release Artifacts
 
 ### Generated Files
 | Artifact | Description | Use Case |
 |----------|-------------|----------|
-| `go-mupdf-v1.0.0-source.tar.gz` | Complete source with submodules | Building from source |
-| `go-mupdf-v1.0.0-linux-amd64.tar.gz` | Command-line tools binary | Direct tool usage |
-| `go-mupdf-v1.0.0-docs.tar.gz` | Documentation package | Offline documentation |
-| `RELEASE_NOTES.md` | Release information | Release announcement |
-| `SHA256SUMS` | Verification checksums | Security verification |
+| `go-mupdf-1.4.7-linux-amd64.tar.gz` | Pre-built MuPDF static libraries and headers (amd64) | Skipping MuPDF compilation |
+| `go-mupdf-1.4.7-linux-amd64.tar.gz.sha256` | Checksum for the amd64 package | Security verification |
+| `go-mupdf-1.4.7-linux-arm64.tar.gz` | Pre-built MuPDF static libraries and headers (arm64) | Skipping MuPDF compilation |
+| `go-mupdf-1.4.7-linux-arm64.tar.gz.sha256` | Checksum for the arm64 package | Security verification |
 
 ### Download and Verification
 ```bash
-# Download artifacts
-curl -L -O "https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-v1.0.0-linux-amd64.tar.gz"
-curl -L -O "https://bitbucket.org/lexmata/go-mupdf/downloads/SHA256SUMS"
+# Download artifacts (replace 1.4.7 with the released version)
+curl -L -O "https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.4.7-linux-amd64.tar.gz"
+curl -L -O "https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.4.7-linux-amd64.tar.gz.sha256"
 
-# Verify checksums
-sha256sum -c SHA256SUMS
+# Verify checksum
+sha256sum -c go-mupdf-1.4.7-linux-amd64.tar.gz.sha256
 
 # Extract and use
-tar -xzf go-mupdf-v1.0.0-linux-amd64.tar.gz
-./go-mupdf-linux-amd64 --help
+tar -xzf go-mupdf-1.4.7-linux-amd64.tar.gz
+ls go-mupdf-1.4.7-linux-amd64/lib/   # libmupdf.a, libmupdf-third.a
 ```
 
 ## 🔧 Configuration
@@ -190,7 +188,7 @@ export BITBUCKET_DOWNLOADS_TOKEN="your-access-token"
 - **Artifact Generation**: ~1-2 minutes
 
 ### Quality Gates
-- **Test Coverage**: Minimum 70% (current: 81.8%)
+- **Test Coverage**: Minimum 70% (the measured coverage is recorded in the release tag message)
 - **Code Quality**: Must pass go vet and gofmt
 - **Build Success**: All platforms must build successfully
 - **Documentation**: Must include updated changelog

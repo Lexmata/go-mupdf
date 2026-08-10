@@ -5,27 +5,10 @@ import (
 	"testing"
 )
 
-// Targeted tests to achieve exactly 90%+ coverage by hitting specific uncovered lines
-
-func TestTargetedCoverageBoost(t *testing.T) {
-	// Force testing.Short() to be false for skipIfShort coverage
-	if testing.Short() {
-		t.Skip("This test must run in normal (non-short) mode to test skipIfShort")
-	}
-
-	// Test skipIfShort when NOT in short mode (covers the other 50%)
-	skipIfShort(t) // Should not skip
-
-	// Test skipIfCIorShort when NOT in CI (covers the other 50%)
-	if os.Getenv("CI") == "" {
-		skipIfCIorShort(t) // Should not skip in non-CI environment
-	}
-}
+// Targeted tests for helper uniqueness and post-close/error-path behavior.
 
 func TestForceHelperCoverage(t *testing.T) {
-	// Test createTestPDF error conditions to hit uncovered lines (34.6% remaining)
-
-	// This should exercise different code paths in createTestPDF
+	// createTestPDF must return a usable path.
 	pdf1 := createTestPDF(t)
 	if pdf1 == "" {
 		t.Error("createTestPDF returned empty path")
@@ -41,20 +24,7 @@ func TestForceHelperCoverage(t *testing.T) {
 	}
 }
 
-func TestRequireMuPDFCoverage(t *testing.T) {
-	// Test requireMuPDF function thoroughly to hit the remaining 44.4%
-
-	// This function checks MuPDF availability and context creation
-	requireMuPDF(t)
-
-	// Call it multiple times to ensure all code paths are exercised
-	requireMuPDF(t)
-	requireMuPDF(t)
-}
-
 func TestTestDataDirCoverage(t *testing.T) {
-	// Test testDataDir to hit the remaining 14.3%
-
 	// Create multiple test data directories
 	dirs := make([]string, 5)
 	for i := 0; i < 5; i++ {
@@ -99,21 +69,21 @@ func TestBoundErrorPaths(t *testing.T) {
 			t.Fatalf("Failed to load page: %v", err)
 		}
 
-		// Call Bound multiple times to hit error paths (33.3% remaining)
+		// Repeated Bound calls must agree.
 		bounds1 := page.Bound()
 		bounds2 := page.Bound()
 		bounds3 := page.Bound()
 
-		// Verify consistency
 		if bounds1 != bounds2 || bounds2 != bounds3 {
 			t.Errorf("Inconsistent bounds: %+v, %+v, %+v", bounds1, bounds2, bounds3)
 		}
 
 		page.Close()
 
-		// Try bounds after close to hit error path
-		bounds4 := page.Bound()
-		t.Logf("Bounds after close: %+v", bounds4)
+		// Post-close contract: Bound on a closed page returns the zero Rect.
+		if bounds4 := page.Bound(); bounds4 != (Rect{}) {
+			t.Errorf("Bound after Close = %+v, want zero Rect", bounds4)
+		}
 	}
 }
 
@@ -130,7 +100,7 @@ func TestCountPagesErrorPaths(t *testing.T) {
 		t.Fatalf("Failed to open document: %v", err)
 	}
 
-	// Call CountPages multiple times to hit different paths (33.3% remaining)
+	// Repeated CountPages calls must agree.
 	count1 := doc.CountPages()
 	count2 := doc.CountPages()
 	count3 := doc.CountPages()
@@ -141,9 +111,10 @@ func TestCountPagesErrorPaths(t *testing.T) {
 
 	doc.Close()
 
-	// Try CountPages after close to hit error path
-	count4 := doc.CountPages()
-	t.Logf("Count after close: %d", count4)
+	// Post-close contract: CountPages on a closed document returns 0.
+	if count4 := doc.CountPages(); count4 != 0 {
+		t.Errorf("CountPages after Close = %d, want 0", count4)
+	}
 }
 
 func TestStringErrorPaths(t *testing.T) {
@@ -172,7 +143,7 @@ func TestStringErrorPaths(t *testing.T) {
 			t.Fatalf("Failed to extract text: %v", err)
 		}
 
-		// Call String multiple times to hit error paths (28.6% remaining)
+		// Repeated String calls must agree.
 		str1 := text.String()
 		str2 := text.String()
 		str3 := text.String()
@@ -183,8 +154,10 @@ func TestStringErrorPaths(t *testing.T) {
 
 		text.Close()
 
-		// Don't call String after close as it causes segfault
-		// text.String() would crash
+		// Post-close contract: String on a closed TextPage returns "".
+		if got := text.String(); got != "" {
+			t.Errorf("String after Close = %q, want empty string", got)
+		}
 	}
 }
 
@@ -202,34 +175,34 @@ func TestExtractTextErrorPathsTargeted(t *testing.T) {
 	}
 	defer doc.Close()
 
-	if doc.CountPages() > 0 {
-		page, err := doc.LoadPage(0)
+	if doc.CountPages() == 0 {
+		t.Fatal("Expected test PDF to contain at least one page")
+	}
+
+	page, err := doc.LoadPage(0)
+	if err != nil {
+		t.Fatalf("Failed to load page: %v", err)
+	}
+	defer page.Close()
+
+	// Repeated extraction on a valid page must succeed.
+	for i := 0; i < 3; i++ {
+		text, err := page.ExtractText()
 		if err != nil {
-			t.Fatalf("Failed to load page: %v", err)
+			t.Errorf("ExtractText %d on valid page failed: %v", i, err)
+			continue
 		}
-		defer page.Close()
+		text.Close()
+	}
 
-		// Call ExtractText multiple times to hit different paths (22.2% remaining)
-		text1, err1 := page.ExtractText()
-		if err1 != nil {
-			t.Logf("Error in first ExtractText: %v", err1)
-		} else {
-			text1.Close()
-		}
-
-		text2, err2 := page.ExtractText()
-		if err2 != nil {
-			t.Logf("Error in second ExtractText: %v", err2)
-		} else {
-			text2.Close()
-		}
-
-		text3, err3 := page.ExtractText()
-		if err3 != nil {
-			t.Logf("Error in third ExtractText: %v", err3)
-		} else {
-			text3.Close()
-		}
+	// Error path: extraction from a closed page must fail.
+	closedPage, err := doc.LoadPage(0)
+	if err != nil {
+		t.Fatalf("Failed to load page for close test: %v", err)
+	}
+	closedPage.Close()
+	if _, err := closedPage.ExtractText(); err == nil {
+		t.Error("Expected error extracting text from a closed page")
 	}
 }
 
@@ -246,7 +219,7 @@ func TestPDFObjectEdgeCases(t *testing.T) {
 	}
 	defer writer.Close()
 
-	// Test NewPDFObject with edge cases to hit remaining 14.3%
+	// All of these values are supported types and must succeed.
 	extremeValues := []interface{}{
 		nil,
 		true,
@@ -264,7 +237,7 @@ func TestPDFObjectEdgeCases(t *testing.T) {
 	for i, val := range extremeValues {
 		obj, err := writer.NewPDFObject(val)
 		if err != nil {
-			t.Logf("Expected success for value %d (%T), got error: %v", i, val, err)
+			t.Errorf("Expected success for value %d (%T), got error: %v", i, val, err)
 		} else {
 			obj.Drop()
 		}

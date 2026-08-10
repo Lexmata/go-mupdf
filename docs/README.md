@@ -129,10 +129,10 @@ We welcome documentation contributions! See [**Contributing**](CONTRIBUTING.md) 
 
 ## Documentation Metrics
 
-- **Files**: 7 comprehensive documentation files
+- **Files**: 20 documentation files in `docs/`
 - **Coverage**: 100% of public APIs documented
-- **Examples**: 50+ practical code examples
-- **Test Coverage**: 81.8% with 21 organized test files
+- **Examples**: 100+ practical code examples
+- **Test Coverage**: Measured in CI and tracked via Codecov, across 26 organized test files
 - **Maintenance**: Updated with every release
 
 ---

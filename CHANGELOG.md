@@ -7,6 +7,176 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-08-10
+
+Supersedes 1.8.0. The 1.8.0 tag exists but its release build failed before
+publishing any artifacts, so 1.8.1 is the first usable 1.8.x release. Use
+1.8.1 rather than 1.8.0.
+
+### 🐛 Bug Fixes
+
+- Fixed a data race between the GC finalizer goroutine and `Context.Drop`.
+  Cleanup reaches MuPDF from two goroutines — the one that owns the object,
+  and the finalizer goroutine running the documented safety net — and every
+  `Close`/`Drop` tested `ctx.ctx` without synchronisation while
+  `Context.Drop` wrote it. Beyond the reported race, a finalizer could pass
+  a context that `Drop` was midway through freeing to MuPDF.
+
+  `Context` now carries a mutex, and all seven cleanup paths (`Document`,
+  `PDFDocument`, `Page`, `PDFPage`, `TextPage`, `PDFWriter`, `PDFObject`) go
+  through a `withLock` helper that makes the "still alive?" check and the
+  use of the context a single atomic step. Holding the lock across the cgo
+  call also prevents two goroutines from entering MuPDF at once, which
+  matters because MuPDF is built here in single-threaded mode.
+
+  The `PDFDocument` case was a regression introduced in 1.8.0, which gave
+  `PDFDocument` a finalizer that actually frees (previously a no-op). The
+  other six were the same latent pattern and are fixed with the same
+  mechanism.
+
+- Cleanup now clears its object's pointer even when the `Context` was
+  dropped first. `fz_drop_context` already released the object, so keeping
+  the pointer left a dangling reference for later calls to pick up.
+
+### ✨ Added
+
+- `pkg/mupdf/finalizer_race_test.go` — regression coverage for the above.
+  Verified by reverting the fix: the deterministic test reports
+  `DATA RACE ... (*Context).Drop()` against each of the affected types, and
+  passes once the fix is restored.
+
+## [1.8.0] - 2026-08-09
+
+Minor version bump rather than a patch: this release changes several
+observable behaviours. Every change below is intentional, but code written
+against 1.4.x may need adjusting.
+
+### ⚠️ Behavior Changes
+
+- **`PDFWriter.AddPage` now creates a genuinely blank page.** Previously every
+  added page was stamped with the placeholder text `"Page Content"`, which was
+  never real document content. Pages built with `AddPage` now contain an empty
+  content stream, so `ExtractText().String()` returns `""` for them. This
+  package does not expose an API for writing to a page content stream; use
+  pdfcpu or an external tool to add content.
+- **Pages added by `AddPage` are linked into the document page tree.** Pages are
+  now created via `pdf_add_page` + `pdf_insert_page` instead of a hand-built
+  `pdf_page` struct, so `CountPages()` and other page-tree readers see them.
+  Documents saved by 1.4.x could report a page count that disagreed with the
+  number of `AddPage` calls.
+- **`Document.AsPDFDocument` now returns an error for non-PDF documents**
+  instead of a `*PDFDocument` wrapping a null pointer. Callers that ignored the
+  error and checked for `nil` still work; callers that ignored both will now see
+  the error.
+- **`Document.AsPDFDocument` returns an independently owned `*PDFDocument`.**
+  It now takes its own reference to the underlying document (via
+  `fz_new_pdf_document_from_fz_document` rather than the non-keeping
+  `pdf_document_from_fz_document` down-cast). Consequences:
+  - The returned `*PDFDocument` **must** be closed with `Close()`, or the
+    document is leaked. A finalizer is a safety net, not a substitute.
+  - Closing the `*PDFDocument` no longer invalidates the parent `Document`, and
+    closing the parent no longer frees the `*PDFDocument`. In 1.4.x, closing
+    either one freed the shared document — a use-after-free in the other.
+  - Covered by a regression test in `pkg/mupdf/pdf_refcount_test.go`.
+- **`PDFWriter.AddPage` rejects non-positive dimensions.** `width` and `height`
+  must both be `> 0`; previously zero or negative values produced a page with a
+  degenerate MediaBox.
+- **`AddPage`, `ImprovedAddPage`, `FixedAddPage`, `SimpleAddPage`,
+  `NewPDFObject`, `DebugCountPages`, `Document.LoadPage`, and `Page.Bound` now
+  check for a closed receiver** and return an error (or the zero value) instead
+  of dereferencing a freed pointer. See the "Closed Objects" section of the
+  package documentation for the uniform convention.
+- **`ExtractPages` merges multiple page ranges into the single output file.**
+  pdfcpu writes one single-page PDF per extracted page; those are now combined
+  in ascending page order into `outputPath`. Previously the output depended on
+  filesystem glob ordering and could contain only part of the requested range.
+  Extraction also uses a private temporary directory, so concurrent calls
+  sharing an output directory no longer merge each other's pages.
+- **`DefaultPDFCPUConfig()` returns a populated configuration**
+  (`model.NewDefaultConfiguration()`) rather than an empty struct, and each
+  operation now works on a private copy of the caller's configuration. pdfcpu
+  mutates the configuration it is handed (`api.Merge` sets both `Cmd` and
+  `ValidationMode`), so a shared `*PDFCPUConfig` could previously have its
+  settings silently altered between calls.
+- **`Page.Bound` reports the effective page box** (CropBox intersected with
+  MediaBox, as MuPDF computes it) and falls back to reading the raw MediaBox —
+  including real-valued entries — only when bounding yields an empty rect.
+  MediaBoxes with non-integer coordinates were previously truncated.
+
+### 🐛 Bug Fixes
+
+- Fixed a use-after-free in `AsPDFDocument`/`PDFDocument.Close` (see above).
+- Added `fz_var` declarations for locals assigned inside `fz_try` blocks and
+  read afterwards (`pdf`, `buf`, `rect`); without them their values are
+  indeterminate after a MuPDF longjmp.
+- `TextPage.String` clamps the buffer length before converting to a Go string
+  instead of silently truncating lengths that exceed `C.int` range.
+- `EncryptPDF` no longer downgrades to RC4-40 when handed a zero-valued
+  `EncryptKeyLength`; it normalizes to AES-256.
+- `GetPDFInfo` returns an error instead of panicking when the PDF has no
+  cross-reference table.
+- `RotatePages`' documented signature in README now matches the code
+  (`pageRanges` precedes `rotation`).
+- `scripts/release.sh`: `version_greater` now implements semver pre-release
+  precedence. `sort -V` orders `1.4.7` before `1.4.7-rc.1`, the inverse of
+  semver, so `--pre` from a plain release previously produced a version that
+  ranked *below* the shipped one; it now bumps the patch first
+  (`1.4.7` → `1.4.8-rc.1`). Breaking-change commit forms (`feat!:`, `fix!:`) are
+  no longer misfiled under "Changed" in the generated changelog.
+- `.githooks/pre-push`: when the pushed range cannot be determined (new branch,
+  shallow clone, no stdin) the test gate now runs the suite unconditionally
+  instead of skipping it — it fails closed.
+- `scripts/docker-test.sh`: pass-through arguments after `--` are kept as an
+  array, so quoted values such as `-run 'TestA|TestB'` survive as single
+  arguments; `quick` and `coverage` accept pass-through arguments too.
+
+### 🔒 Security
+
+- Codecov uploads no longer pipe an unpinned remote script into a shell. The new
+  `scripts/upload-coverage.sh` downloads a pinned uploader release and verifies
+  its SHA-256 checksum before executing it.
+
+### ✨ Added
+
+- `scripts/check-mupdf-lock.sh` verifies that `mupdf.lock` matches the MuPDF
+  submodule pointer. The pin is part of the CI cache key for the pre-built
+  libraries, and a stale pin silently serves libraries built from a different
+  MuPDF commit. Now enforced by both the pre-commit hook and the `build-mupdf`
+  pipeline step.
+- `pkg/mupdf/pdf_refcount_test.go` — regression coverage for the
+  `AsPDFDocument`/`Close` reference balance, exercised both explicitly and
+  through the finalizer.
+
+### 📚 Documentation
+
+- Corrected the thread-safety guidance in `docs/GETTING_STARTED.md` and
+  `docs/BEST_PRACTICES.md`: a `Context` is **not** thread-safe (MuPDF is
+  initialised in single-threaded mode), so each goroutine needs its own.
+- README now states the real minimum Go version (1.24), documents the
+  `AsPDFDocument` lifetime and `AddPage` dimension constraints, and lists the
+  current test files.
+- `pkg/mupdf/mupdf.go` gained a "Closed Objects" section describing the
+  package-wide convention for operations on closed objects.
+- Marked `ImprovedAddPage`, `FixedAddPage`, and `SimpleAddPage` as deprecated in
+  favour of `AddPage`, and removed the unsupported claim that `FixedAddPage`
+  was more stable than it.
+
+## [1.7.2] - 2026-04-28
+
+### 🐛 Bug Fixes
+- **MPDF-99: `AddBookmarks` now writes nested children and sibling chains correctly.**
+  The outline iterator was misdriven: `fz_outline_iterator_insert` auto-advances
+  past the inserted item, but `insertOutlineItems` called `_next` again (skipping
+  a slot) and `_down` from the already-advanced position (silently failing to
+  descend). As a result only the first top-level sibling was persisted, and all
+  children at every level were dropped; mupdf then logged `warning: repaired
+  broken tree structure in outline` when reading the PDF back. Fix: after
+  inserting an item with children, `_prev` back onto the item before `_down`;
+  after `_up` from children, skip the redundant `_next` (since `_insert`'s
+  auto-advance already positioned us for the next sibling). Regression tests
+  added for nested children round-trip, multiple top-level siblings, and
+  alphabetical outline extraction.
+
 ## [1.4.7] - 2025-11-20
 
 ### 🐛 Bug Fixes

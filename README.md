@@ -15,8 +15,8 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 - 📋 **PDF Creation**: Create new PDF documents and add pages programmatically
 - 🧠 **Memory Safe**: Comprehensive memory management with automatic cleanup
 - ⚡ **High Performance**: Built on MuPDF's fast C library
-- 🔒 **Thread Safe**: Concurrent operations supported
-- 🧪 **Well Tested**: 81.8% test coverage with 123+ test functions
+- 🔒 **Concurrency**: Safe concurrent use with one Context per goroutine
+- 🧪 **Well Tested**: Extensively tested — line coverage measured in CI
 - 🛡️ **Error Resilient**: Robust error handling and edge case coverage
 
 ### PDFCPU Integration Features
@@ -33,7 +33,7 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 
 ### Prerequisites
 
-- Go 1.19 or later
+- Go 1.24 or later
 - C compiler (gcc, clang)
 - Make build system
 
@@ -65,7 +65,7 @@ go get bitbucket.org/lexmata/go-mupdf@latest
 4. Takes < 1 minute with pre-built libraries, 5-10 minutes building from source
 
 **Requirements**:
-- Go 1.19 or later
+- Go 1.24 or later
 - C compiler (gcc/clang)
 - Git (for cloning)
 - wget or curl (for downloading pre-built libraries)
@@ -78,15 +78,18 @@ Skip compilation and use pre-built MuPDF libraries:
 
 ```bash
 # Download pre-built libraries for your platform
-wget https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.1.0-linux-amd64.tar.gz
+# Replace <VERSION> with the current release (see the VERSION file or the
+# Bitbucket Downloads page). Pre-built packages exist for linux-amd64 and
+# linux-arm64; other platforms build from source automatically via `make setup`.
+wget https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-<VERSION>-linux-amd64.tar.gz
 
 # Extract to project directory
-tar -xzf go-mupdf-1.1.0-linux-amd64.tar.gz
+tar -xzf go-mupdf-<VERSION>-linux-amd64.tar.gz
 
 # Install to expected location (in your go-mupdf project)
 mkdir -p third_party/mupdf/build/release third_party/mupdf/include
-cp go-mupdf-1.1.0-linux-amd64/lib/*.a third_party/mupdf/build/release/
-cp -r go-mupdf-1.1.0-linux-amd64/include/mupdf third_party/mupdf/include/
+cp go-mupdf-<VERSION>-linux-amd64/lib/*.a third_party/mupdf/build/release/
+cp -r go-mupdf-<VERSION>-linux-amd64/include/mupdf third_party/mupdf/include/
 
 # Build your application (no compilation needed!)
 go build
@@ -133,7 +136,7 @@ go build
 - ⚠️ **Other platforms** - Will build from source automatically
 
 **Requirements**:
-- Go 1.19 or later
+- Go 1.24 or later
 - GCC or Clang (C compiler)
 - `git`, `make`, `curl` or `wget`
 - Internet connection
@@ -384,7 +387,7 @@ func main() {
 ### Core Types
 
 #### Context
-The `Context` manages MuPDF's execution environment and memory allocation.
+The `Context` manages MuPDF's execution environment and memory allocation. A `Context` is not safe for concurrent use and must not be shared between goroutines — create one `Context` per goroutine.
 
 ```go
 type Context struct { /* ... */ }
@@ -405,6 +408,12 @@ func (doc *Document) CountPages() int
 func (doc *Document) LoadPage(pageNum int) (*Page, error)
 func (doc *Document) AsPDFDocument() (*PDFDocument, error)
 ```
+
+`AsPDFDocument` returns an error when the document is not a PDF. The returned
+`*PDFDocument` holds its own reference to the underlying document, so it has an
+independent lifetime and **must** be closed with `Close()` — closing it does not
+invalidate the parent `Document`, and closing the parent first does not free the
+`*PDFDocument`.
 
 #### Page
 Represents a single page within a document.
@@ -430,6 +439,12 @@ func (writer *PDFWriter) Save(filename string) error
 func (writer *PDFWriter) NewPDFObject(value interface{}) (*PDFObject, error)
 ```
 
+`AddPage` requires strictly positive `width` and `height` (in points) and returns
+an error otherwise. The page it creates is **blank** — this package does not
+expose an API for writing to a page content stream, so a document built solely
+with `AddPage` contains no text or graphics. Use pdfcpu or an external tool to
+add content.
+
 #### PDFCPU Functions
 Advanced PDF manipulation operations via PDFCPU integration.
 
@@ -447,8 +462,8 @@ func AddWatermark(inputPath, outputPath, watermarkText, imagePath string, config
 func OptimizePDF(inputPath, outputPath string, config *PDFCPUConfig) error
 
 // PDF Operations
-func RotatePages(inputPath, outputPath string, rotation int, pageRanges []string, config *PDFCPUConfig) error
-func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDFCPUConfig) error
+func RotatePages(inputPath, outputPath string, pageRanges []string, rotation int, config *PDFCPUConfig) error
+func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDFCPUConfig) error // multiple ranges are merged into the single output file
 
 // PDF Information
 func ValidatePDF(pdfPath string, config *PDFCPUConfig) error
@@ -471,7 +486,7 @@ func (e Error) Error() string
 
 ## Testing
 
-The project includes a comprehensive test suite with **81.8% coverage** across **123 test functions**.
+The project is extensively tested — line coverage is measured in CI on every pipeline run.
 
 [![codecov](https://codecov.io/gh/lexmata/go-mupdf/branch/main/graph/badge.svg)](https://codecov.io/gh/lexmata/go-mupdf)
 
@@ -566,7 +581,9 @@ The test suite is organized to directly mirror the refactored module structure:
 - **Memory** (`memory_test.go`) - Memory management and leak detection
 - **Lifecycle** (`lifecycle_test.go`) - Resource lifecycle management
 - **Cleanup** (`cleanup_test.go`) - Resource cleanup validation
-- **Test Helpers** (`test_helpers_test.go`) - Testing utilities
+- **Refcount** (`pdf_refcount_test.go`) - PDFDocument/Document reference balance
+- **Error Paths** (`error_paths_test.go`) - Error and closed-object paths
+- **Test Helpers** (`helpers_test.go`) - Testing utilities
 
 **Quality Assurance Tests:**
 - **Boundary** (`boundary_test.go`) - API boundaries and limits
@@ -908,7 +925,7 @@ The codebase is organized into focused modules for better maintainability:
 - **`pdf_simple.go`** - Simplified implementations with manual control
 
 ### Utilities
-- **`test_helpers.go`** - Testing utilities and helper functions
+- **`helpers_test.go`** - Testing utilities and helper functions
 - **`mupdf.go`** - Package documentation and overview
 
 ### Test Organization
@@ -916,13 +933,13 @@ Tests are organized to directly mirror the module structure:
 - Each core module has a corresponding `*_test.go` file
 - PDF functionality is split into specialized test files
 - Infrastructure, quality assurance, and integration tests are clearly categorized
-- **21 total test files** providing comprehensive coverage
+- **26 total test files** providing comprehensive coverage
 
 ## Project Status
 
 - ✅ **Production Ready**: Used in production environments
 - ✅ **Actively Maintained**: Regular updates and bug fixes
-- ✅ **Well Tested**: 81.8% test coverage with comprehensive test suite
+- ✅ **Well Tested**: Comprehensive test suite with line coverage measured in CI
 - ✅ **Memory Safe**: Robust memory management and cleanup
 - ✅ **Cross Platform**: Supports Linux, macOS, and Windows
 - ✅ **Well Organized**: Modular structure with clear separation of concerns
@@ -930,10 +947,10 @@ Tests are organized to directly mirror the module structure:
 
 ---
 
-**Version**: 1.1.0
+**Version**: 1.8.1 (see the `VERSION` file for the current release)
 **MuPDF Version**: 1.26.3
 **PDFCPU Version**: 0.11.1
-**Go Version**: 1.19+
+**Go Version**: 1.24+
 **Architecture**: Modular design with integrated PDFCPU functionality
-**Test Coverage**: 81.8% with comprehensive PDFCPU test suite
+**Test Coverage**: Measured in CI and tracked via Codecov
 **Last Updated**: 2025

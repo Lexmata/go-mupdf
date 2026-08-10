@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Prepare-commit-msg hook for automated versioning
-# Updates VERSION file when merging release branches to main
+# Updates VERSION file when merging release/X.Y.Z or hotfix/X.Y.Z branches to main
 # This ensures the version update is part of the merge commit
 
 # Colors for output
@@ -33,18 +33,18 @@ echo -e "${BLUE}🔍 Preparing merge commit...${NC}"
 # Read the merge message to find the release branch
 MERGE_MSG=$(cat "$COMMIT_MSG_FILE" 2>/dev/null || echo "")
 
-# Try to extract release branch name from merge message
+# Try to extract release/hotfix branch name from merge message
 RELEASE_BRANCH=""
-if echo "$MERGE_MSG" | grep -qE "Merge.*release/"; then
-    RELEASE_BRANCH=$(echo "$MERGE_MSG" | grep -oE "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+if echo "$MERGE_MSG" | grep -qE "Merge.*(release|hotfix)/"; then
+    RELEASE_BRANCH=$(echo "$MERGE_MSG" | grep -oE "(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
 fi
 
 # Alternative: Check MERGE_HEAD for release branch info
 if [ -z "$RELEASE_BRANCH" ] && [ -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then
     MERGE_HEAD=$(cat "$(git rev-parse --git-path MERGE_HEAD)" 2>/dev/null | head -1)
     if [ -n "$MERGE_HEAD" ]; then
-        # Try to find release branch in merged commits
-        MERGED_BRANCHES=$(git branch -r --contains "$MERGE_HEAD" 2>/dev/null | grep -E "release/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+        # Try to find release/hotfix branch in merged commits
+        MERGED_BRANCHES=$(git branch -r --contains "$MERGE_HEAD" 2>/dev/null | grep -E "(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+" | head -1)
         if [ -n "$MERGED_BRANCHES" ]; then
             RELEASE_BRANCH=$(echo "$MERGED_BRANCHES" | sed 's|^[[:space:]]*origin/||' | sed 's|^[[:space:]]*||')
         fi
@@ -52,19 +52,19 @@ if [ -z "$RELEASE_BRANCH" ] && [ -f "$(git rev-parse --git-path MERGE_HEAD)" ]; 
         # Also try git name-rev
         if [ -z "$RELEASE_BRANCH" ]; then
             BRANCH_NAME=$(git name-rev --name-only "$MERGE_HEAD" 2>/dev/null | sed 's|^remotes/origin/||' | sed 's|^origin/||')
-            if echo "$BRANCH_NAME" | grep -qE "^release/[0-9]+\.[0-9]+\.[0-9]+"; then
+            if echo "$BRANCH_NAME" | grep -qE "^(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+"; then
                 RELEASE_BRANCH="$BRANCH_NAME"
             fi
         fi
     fi
 fi
 
-# Extract version from release branch name (release/X.Y.Z -> X.Y.Z)
+# Extract version from branch name (release/X.Y.Z or hotfix/X.Y.Z[-suffix] -> X.Y.Z)
 if [ -n "$RELEASE_BRANCH" ]; then
-    VERSION=$(echo "$RELEASE_BRANCH" | sed -E 's|^release/([0-9]+\.[0-9]+\.[0-9]+).*|\1|')
+    VERSION=$(echo "$RELEASE_BRANCH" | sed -E 's,^(release|hotfix)/([0-9]+\.[0-9]+\.[0-9]+).*,\2,')
 
     if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "${GREEN}✅ Release branch detected: $RELEASE_BRANCH${NC}"
+        echo -e "${GREEN}✅ Release/hotfix branch detected: $RELEASE_BRANCH${NC}"
         echo -e "${BLUE}📦 Version: $VERSION${NC}"
 
         # Read current version

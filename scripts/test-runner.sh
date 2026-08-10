@@ -4,6 +4,7 @@
 # This script runs comprehensive tests for the project
 
 set -e
+set -o pipefail
 
 echo "=== Go MuPDF Test Runner ==="
 
@@ -17,9 +18,7 @@ run_tests_with_coverage() {
     echo "Running tests with coverage..."
     
     # Run all tests with race detection and coverage
-    go test -v -race -coverprofile="$COVERAGE_FILE" ./...
-    
-    if [ $? -eq 0 ]; then
+    if go test -v -race -coverprofile="$COVERAGE_FILE" ./...; then
         echo "✅ All tests passed!"
     else
         echo "❌ Some tests failed!"
@@ -43,9 +42,7 @@ run_benchmarks() {
     echo "Running benchmarks..."
     
     # Run benchmarks for the main package
-    go test -v -bench=. -benchmem ./pkg/mupdf/ | tee "$BENCHMARK_FILE"
-    
-    if [ $? -eq 0 ]; then
+    if go test -v -bench=. -benchmem ./pkg/mupdf/ | tee "$BENCHMARK_FILE"; then
         echo "✅ Benchmarks completed successfully!"
     else
         echo "⚠️  Some benchmarks failed or encountered issues"
@@ -94,8 +91,7 @@ check_code_quality() {
     
     # Run go vet
     echo "🔍 Running go vet..."
-    go vet ./...
-    if [ $? -eq 0 ]; then
+    if go vet ./...; then
         echo "✅ go vet passed"
     else
         echo "❌ go vet found issues"
@@ -105,8 +101,7 @@ check_code_quality() {
     # Run staticcheck if available
     if command -v staticcheck >/dev/null 2>&1; then
         echo "🔬 Running staticcheck..."
-        staticcheck ./...
-        if [ $? -eq 0 ]; then
+        if staticcheck ./...; then
             echo "✅ staticcheck passed"
         else
             echo "❌ staticcheck found issues"
@@ -118,7 +113,7 @@ check_code_quality() {
     
     # Check for TODO comments
     echo "📝 Checking for TODO comments..."
-    TODO_COUNT=$(grep -r "TODO" --include="*.go" . | wc -l)
+    TODO_COUNT=$(grep -r "TODO" --include="*.go" . | wc -l || true)
     if [ "$TODO_COUNT" -gt 0 ]; then
         echo "📋 Found $TODO_COUNT TODO comments:"
         grep -rn "TODO" --include="*.go" .
@@ -141,8 +136,7 @@ validate_dependencies() {
     
     # Verify go.mod
     echo "📦 Verifying go.mod..."
-    go mod verify
-    if [ $? -eq 0 ]; then
+    if go mod verify; then
         echo "✅ go.mod verified"
     else
         echo "❌ go.mod verification failed"

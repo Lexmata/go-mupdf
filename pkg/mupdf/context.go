@@ -6,8 +6,6 @@
 package mupdf
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/mupdf/include
-#cgo LDFLAGS: -L${SRCDIR}/../../third_party/mupdf/build/release -lmupdf -lmupdf-third  -lm
 
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +48,7 @@ fz_context* go_mupdf_new_context(char **out_error) {
 import "C"
 import (
 	"runtime"
+	"sync"
 	"unsafe"
 )
 
@@ -74,10 +73,13 @@ func GetVersion() string {
 // Context represents a MuPDF execution context and manages the library's
 // internal state, memory allocation, and error handling.
 //
-// A Context is required for all MuPDF operations and should be created
-// once per thread or goroutine that needs to use MuPDF functionality.
-// Contexts are thread-safe and can be used concurrently, but for optimal
-// performance, create separate contexts for different goroutines.
+// A Context is required for all MuPDF operations. Contexts are created in
+// MuPDF's single-threaded mode (no locking primitives), so a Context must
+// NOT be shared across goroutines. The supported concurrency pattern is
+// one Context per goroutine: each goroutine that needs MuPDF functionality
+// creates its own Context via NewContext. Documents, Pages, and other
+// objects created from a Context are bound to it and share the same
+// restriction.
 //
 // The Context manages:
 //   - Memory allocation and cleanup
@@ -100,7 +102,30 @@ func GetVersion() string {
 //
 //	// Use ctx for document operations...
 type Context struct {
+	// mu guards ctx. Cleanup runs from two places: the goroutine that
+	// owns the object, and the GC finalizer goroutine. Without mu, a
+	// finalizer reading ctx races with Drop writing it, and can hand a
+	// half-dropped fz_context to MuPDF. Holding mu across the cgo call
+	// also keeps two goroutines from entering MuPDF at once, which
+	// matters because MuPDF is built here in single-threaded mode.
+	mu  sync.Mutex
 	ctx *C.fz_context
+}
+
+// withLock runs fn while holding the context lock, passing the live
+// fz_context, or nil if the Context has already been dropped. It is a
+// no-op when ctx itself is nil.
+//
+// Every cleanup path reachable from a finalizer must go through here
+// rather than testing ctx.ctx directly, so that the "is it still alive"
+// check and the use of the context are a single atomic step.
+func (ctx *Context) withLock(fn func(c *C.fz_context)) {
+	if ctx == nil {
+		return
+	}
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	fn(ctx.ctx)
 }
 
 // NewContext creates a new MuPDF execution context.
@@ -181,6 +206,8 @@ func NewContext() (*Context, error) {
 //	// Use context for operations...
 //	// Drop() will be called automatically when function returns
 func (ctx *Context) Drop() {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
 	if ctx.ctx != nil {
 		C.fz_drop_context(ctx.ctx)
 		ctx.ctx = nil

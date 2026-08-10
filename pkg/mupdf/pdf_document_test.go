@@ -37,9 +37,11 @@ func TestPDFDocument(t *testing.T) {
 		t.Fatal("PDFDocument is nil")
 	}
 
-	// Test CountPages
+	// Test CountPages (createTestPDF produces a 1-page document)
 	pageCount := pdf.CountPages()
-	t.Logf("Document has %d page(s)", pageCount)
+	if pageCount != 1 {
+		t.Errorf("Expected 1 page from converted PDF document, got %d", pageCount)
+	}
 
 	// Test OpenPDFDocument
 	pdfDirect, err := OpenPDFDocument(ctx, pdfPath)
@@ -53,7 +55,9 @@ func TestPDFDocument(t *testing.T) {
 
 	// Test CountPages on direct PDF
 	pageCountDirect := pdfDirect.CountPages()
-	t.Logf("Direct PDF has %d page(s)", pageCountDirect)
+	if pageCountDirect != 1 {
+		t.Errorf("Expected 1 page from directly opened PDF document, got %d", pageCountDirect)
+	}
 }
 
 func TestPDFPage(t *testing.T) {
@@ -250,14 +254,14 @@ func TestPDFWriter(t *testing.T) {
 	}
 	defer doc.Close()
 
-	// Check page count
+	// The added page must survive the save/reopen round trip.
 	pageCount := doc.CountPages()
-	t.Logf("Document has %d page(s)", pageCount)
-	// Note: Currently, the PDF creation process is not adding pages correctly.
-	// This is a known issue that needs further investigation.
+	if pageCount != 1 {
+		t.Errorf("Expected 1 page after reopen, got %d", pageCount)
+	}
 }
 
-func TestPDFCreationAndModification(t *testing.T) {
+func TestPDFMultiPageCreation(t *testing.T) {
 	requireMuPDF(t)
 	skipIfCIorShort(t)
 
@@ -302,15 +306,10 @@ func TestPDFCreationAndModification(t *testing.T) {
 		t.Fatalf("Failed to open saved PDF document: %v", err)
 	}
 
-	// Check page count
+	// All three added pages must survive the save/reopen round trip.
 	pageCount := pdf.CountPages()
-	t.Logf("Document has %d page(s)", pageCount)
-	// Note: Currently, the PDF creation process is not adding pages correctly.
-	// This is a known issue that needs further investigation.
-
-	// Skip page loading if no pages
-	if pageCount == 0 {
-		return
+	if pageCount != 3 {
+		t.Errorf("Expected 3 pages after reopen, got %d", pageCount)
 	}
 
 	// Load each page and check bounds

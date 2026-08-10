@@ -189,7 +189,10 @@ func TestErrorRecovery(t *testing.T) {
 	})
 }
 
-// TestCorruptedPDF tests handling of corrupted PDF files
+// TestCorruptedPDF tests handling of malformed PDF files. Each input has a
+// deterministic expected outcome: mildly corrupt files are repaired by MuPDF,
+// while unparseable garbage must fail to open. (Non-PDF garbage bytes are
+// also asserted to fail in TestErrorHandlingExtended/OpenInvalidFile.)
 func TestCorruptedPDF(t *testing.T) {
 	requireMuPDF(t)
 	skipIfShort(t)
@@ -201,18 +204,12 @@ func TestCorruptedPDF(t *testing.T) {
 	}
 	defer ctx.Drop()
 
-	// Create a corrupted PDF file
 	dir := testDataDir(t)
-	pdfPath := filepath.Join(dir, "corrupted.pdf")
 
-	// Start with a valid PDF
-	f, err := os.Create(pdfPath)
-	if err != nil {
-		t.Fatalf("Failed to create PDF file: %v", err)
-	}
-
-	// Write a valid PDF header but corrupt the rest
-	content := `%PDF-1.4
+	// A structurally complete 1-page PDF whose startxref value is garbage.
+	// MuPDF's repair pass rebuilds the xref table from the object headers,
+	// so this document deterministically opens with exactly 1 page.
+	repairableContent := `%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
 endobj
@@ -240,51 +237,66 @@ startxref
 CORRUPTED_DATA_HERE
 %%EOF`
 
-	_, err = f.WriteString(content)
-	if err != nil {
-		t.Fatalf("Failed to write corrupted PDF content: %v", err)
+	testCases := []struct {
+		name      string
+		filename  string
+		content   string
+		wantOpen  bool
+		wantPages int
+	}{
+		{
+			name:      "RepairableXrefCorruption",
+			filename:  "corrupted_xref.pdf",
+			content:   repairableContent,
+			wantOpen:  true,
+			wantPages: 1,
+		},
+		{
+			name:     "GarbageBytesWithPDFHeader",
+			filename: "corrupted_garbage.pdf",
+			content:  "%PDF-1.4\n\x00\x01\x02garbage bytes with no objects, xref, or trailer",
+			wantOpen: false,
+		},
 	}
 
-	err = f.Close()
-	if err != nil {
-		t.Fatalf("Failed to close corrupted PDF file: %v", err)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pdfPath := filepath.Join(dir, tc.filename)
+			if err := os.WriteFile(pdfPath, []byte(tc.content), 0644); err != nil {
+				t.Fatalf("Failed to write malformed PDF fixture: %v", err)
+			}
 
-	// Try to open the corrupted file
-	doc, err := OpenDocument(ctx, pdfPath)
-	if err != nil {
-		// If it fails to open, that's fine - just note it
-		t.Logf("Failed to open corrupted document as expected: %v", err)
-		return
-	}
-	defer doc.Close()
+			doc, err := OpenDocument(ctx, pdfPath)
+			if !tc.wantOpen {
+				if err == nil {
+					doc.Close()
+					t.Fatal("Expected error when opening unrepairable PDF, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Expected MuPDF to repair and open document, got error: %v", err)
+			}
+			defer doc.Close()
 
-	// If it opens (MuPDF is quite forgiving), try to access its content
-	t.Log("Corrupted document opened, testing access to content")
+			if pageCount := doc.CountPages(); pageCount != tc.wantPages {
+				t.Fatalf("Expected %d page(s) in repaired document, got %d", tc.wantPages, pageCount)
+			}
 
-	// Try to get page count
-	pageCount := doc.CountPages()
-	t.Logf("Corrupted document reports %d pages", pageCount)
+			page, err := doc.LoadPage(0)
+			if err != nil {
+				t.Fatalf("Failed to load page from repaired document: %v", err)
+			}
+			defer page.Close()
 
-	// If there are pages reported, try to access one
-	if pageCount > 0 {
-		page, err := doc.LoadPage(0)
-		if err != nil {
-			t.Logf("Failed to load page from corrupted document as expected: %v", err)
-			return
-		}
-		defer page.Close()
-
-		// Try to extract text
-		text, err := page.ExtractText()
-		if err != nil {
-			t.Logf("Failed to extract text from corrupted document as expected: %v", err)
-			return
-		}
-		defer text.Close()
-
-		content := text.String()
-		t.Logf("Extracted text from corrupted document: %q", content)
+			// Text extraction must complete without error on the repaired
+			// document (the fixture's content stream is empty).
+			text, err := page.ExtractText()
+			if err != nil {
+				t.Fatalf("Failed to extract text from repaired document: %v", err)
+			}
+			text.Close()
+		})
 	}
 }
 

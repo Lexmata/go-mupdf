@@ -46,15 +46,10 @@ func TestIntegrationBasicWorkflow(t *testing.T) {
 		t.Fatalf("Failed to open document: %v", err)
 	}
 
-	// Check page count
+	// Check page count: the writer added exactly one page
 	pageCount := doc.CountPages()
-	t.Logf("Document has %d page(s)", pageCount)
-	// Note: Currently, the PDF creation process is not adding pages correctly.
-	// This is a known issue that needs further investigation.
-
-	// Skip page loading if no pages
-	if pageCount == 0 {
-		return
+	if pageCount != 1 {
+		t.Fatalf("Expected 1 page in saved document, got %d", pageCount)
 	}
 
 	// Load the page
@@ -90,15 +85,10 @@ func TestIntegrationBasicWorkflow(t *testing.T) {
 		t.Fatalf("Failed to open PDF document: %v", err)
 	}
 
-	// Check page count
+	// Check page count: the same single-page document opened as a PDF
 	pdfPageCount := pdf.CountPages()
-	t.Logf("PDF document has %d page(s)", pdfPageCount)
-	// Note: Currently, the PDF creation process is not adding pages correctly.
-	// This is a known issue that needs further investigation.
-
-	// Skip page loading if no pages
-	if pdfPageCount == 0 {
-		return
+	if pdfPageCount != 1 {
+		t.Fatalf("Expected 1 page in PDF document, got %d", pdfPageCount)
 	}
 
 	// Load the page
@@ -231,11 +221,16 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	}
 }
 
-func TestIntegrationMemoryManagement(t *testing.T) {
+// TestIntegrationRepeatedObjectLifecycle exercises repeated create/use/close
+// cycles across the full object graph (it does not measure memory usage)
+func TestIntegrationRepeatedObjectLifecycle(t *testing.T) {
 	requireMuPDF(t)
 	skipIfCIorShort(t)
 
-	// This test checks for memory leaks by creating and destroying many objects
+	// Number of pages the writer adds per iteration
+	const numPages = 5
+
+	// Repeatedly create, use, and destroy the full object graph
 	for i := 0; i < 5; i++ {
 		func() {
 			ctx, err := NewContext()
@@ -251,27 +246,30 @@ func TestIntegrationMemoryManagement(t *testing.T) {
 			}
 
 			// Add multiple pages
-			for j := 0; j < 5; j++ {
+			for j := 0; j < numPages; j++ {
 				_, err = writer.AddPage(595, 842) // A4 size
 				if err != nil {
 					t.Fatalf("Failed to add page: %v", err)
 				}
 
-				// Create some objects
-				_, err = writer.NewPDFObject(nil)
+				// Create some objects, dropping each one to avoid leaks
+				nullObj, err := writer.NewPDFObject(nil)
 				if err != nil {
 					t.Fatalf("Failed to create null object: %v", err)
 				}
+				nullObj.Drop()
 
-				_, err = writer.NewPDFObject(42)
+				intObj, err := writer.NewPDFObject(42)
 				if err != nil {
 					t.Fatalf("Failed to create integer object: %v", err)
 				}
+				intObj.Drop()
 
-				_, err = writer.NewPDFObject("Test string")
+				strObj, err := writer.NewPDFObject("Test string")
 				if err != nil {
 					t.Fatalf("Failed to create string object: %v", err)
 				}
+				strObj.Drop()
 			}
 
 			// Save the PDF
@@ -290,28 +288,27 @@ func TestIntegrationMemoryManagement(t *testing.T) {
 				t.Fatalf("Failed to open document: %v", err)
 			}
 
-			// Get page count
+			// Assert all added pages made it into the saved document
 			pageCount := doc.CountPages()
-			t.Logf("Document has %d page(s)", pageCount)
+			if pageCount != numPages {
+				t.Fatalf("Iteration %d: expected %d pages, got %d", i, numPages, pageCount)
+			}
 
-			// Only try to load pages if there are any
-			if pageCount > 0 {
-				// Load all pages
-				for j := 0; j < pageCount; j++ {
-					page, err := doc.LoadPage(j)
-					if err != nil {
-						t.Fatalf("Failed to load page %d: %v", j, err)
-					}
-
-					text, err := page.ExtractText()
-					if err != nil {
-						t.Fatalf("Failed to extract text from page %d: %v", j, err)
-					}
-
-					_ = text.String()
-					text.Close()
-					page.Close()
+			// Load all pages
+			for j := 0; j < pageCount; j++ {
+				page, err := doc.LoadPage(j)
+				if err != nil {
+					t.Fatalf("Failed to load page %d: %v", j, err)
 				}
+
+				text, err := page.ExtractText()
+				if err != nil {
+					t.Fatalf("Failed to extract text from page %d: %v", j, err)
+				}
+
+				_ = text.String()
+				text.Close()
+				page.Close()
 			}
 
 			doc.Close()

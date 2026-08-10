@@ -42,7 +42,7 @@ pkg/mupdf/
 ├── pdf_debug.go      # Debug utilities
 ├── pdf_fix.go        # Fixed implementations
 ├── pdf_simple.go     # Simplified implementations
-└── test_helpers.go   # Testing utilities
+└── helpers_test.go   # Testing utilities (test-only)
 ```
 
 ### Dependency Graph
@@ -210,15 +210,17 @@ func (e Error) Error() string {
 
 ### Thread Safety
 
-- **Context**: Thread-safe, can be shared between goroutines
+- **Context**: Not thread-safe, must not be shared between goroutines — create one Context per goroutine
 - **Document**: Not thread-safe, don't share between goroutines  
 - **Page**: Not thread-safe, don't share between goroutines
 - **PDFWriter**: Not thread-safe, don't share between goroutines
 
-### Recommended Patterns
+### Recommended Pattern
+
+The supported concurrency model is one Context per goroutine. All objects created from a Context (documents, pages, writers) must stay on that goroutine as well.
 
 ```go
-// Pattern 1: Separate contexts per goroutine
+// One Context per goroutine
 func processDocumentsConcurrently(files []string) {
     var wg sync.WaitGroup
     for _, file := range files {
@@ -226,34 +228,10 @@ func processDocumentsConcurrently(files []string) {
         go func(filename string) {
             defer wg.Done()
             
-            ctx, _ := mupdf.NewContext()  // Separate context
+            ctx, _ := mupdf.NewContext()  // Separate context per goroutine
             defer ctx.Drop()
             
             processDocument(ctx, filename)
-        }(file)
-    }
-    wg.Wait()
-}
-
-// Pattern 2: Shared context with synchronized access
-func processWithSharedContext(files []string) {
-    ctx, _ := mupdf.NewContext()
-    defer ctx.Drop()
-    
-    var mu sync.Mutex
-    var wg sync.WaitGroup
-    
-    for _, file := range files {
-        wg.Add(1)
-        go func(filename string) {
-            defer wg.Done()
-            
-            mu.Lock()
-            doc, _ := mupdf.OpenDocument(ctx, filename)
-            mu.Unlock()
-            
-            defer doc.Close()
-            processDocument(doc)
         }(file)
     }
     wg.Wait()
@@ -319,10 +297,10 @@ tests/
 
 ### Optimization Strategies
 
-1. **Reuse contexts** for multiple operations
+1. **Reuse contexts** for multiple sequential operations
 2. **Close pages immediately** in loops
 3. **Process documents in batches** for large sets
-4. **Use goroutines** for independent documents
+4. **Use goroutines** for independent documents (one Context per goroutine)
 5. **Force GC** periodically for long-running processes
 
 ## Future Architecture Considerations

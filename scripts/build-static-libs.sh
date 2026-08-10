@@ -89,11 +89,30 @@ build_mupdf() {
         exit 1
     fi
 
+    # When cross-compiling, a cross compiler must be provided via $CC
+    local host_arch=$(uname -m)
+    case "$host_arch" in
+        x86_64) host_arch="amd64" ;;
+        aarch64) host_arch="arm64" ;;
+        armv7l) host_arch="arm" ;;
+        i386|i686) host_arch="386" ;;
+    esac
+
+    if [ -n "${GOARCH:-}" ] && [ "$GOARCH" != "$host_arch" ]; then
+        case "${CC:-}" in
+            ""|cc|gcc|clang)
+                log_error "GOARCH=$GOARCH differs from host architecture ($host_arch), but CC is not set to a cross compiler"
+                log_error "Set CC to a cross compiler (e.g. CC=aarch64-linux-gnu-gcc) before building"
+                exit 1
+                ;;
+        esac
+    fi
+
     cd "$MUPDF_DIR"
 
     # Clean previous build
     log_info "Cleaning previous build..."
-    make clean || true
+    make clean || log_warn "make clean failed; continuing with existing build tree"
 
     # Build MuPDF with all dependencies statically linked
     log_info "Compiling MuPDF (this may take several minutes)..."
@@ -297,6 +316,38 @@ verify_libraries() {
         fi
     fi
 
+    # Verify the archive's object architecture matches the target
+    local target_os="${platform%%-*}"
+    local target_arch="${platform##*-}"
+
+    if [ "$target_os" = "linux" ] && command -v readelf >/dev/null 2>&1; then
+        local expected_machine=""
+        case "$target_arch" in
+            amd64) expected_machine="Advanced Micro Devices X86-64" ;;
+            arm64) expected_machine="AArch64" ;;
+        esac
+
+        if [ -n "$expected_machine" ]; then
+            local lib
+            for lib in "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a"; do
+                local member=$(ar t "$lib" 2>/dev/null | head -1)
+                local machine=$(ar p "$lib" "$member" 2>/dev/null | readelf -h /dev/stdin 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}')
+                if [ -z "$machine" ]; then
+                    log_warn "Could not determine architecture of $(basename "$lib")"
+                elif [ "$machine" != "$expected_machine" ]; then
+                    log_error "$(basename "$lib") is built for '$machine' but target $platform expects '$expected_machine'"
+                    exit 1
+                else
+                    log_info "$(basename "$lib") architecture verified: $machine"
+                fi
+            done
+        else
+            log_warn "No known ELF machine mapping for architecture '$target_arch', skipping architecture check"
+        fi
+    else
+        log_warn "Skipping architecture verification (requires a linux target and readelf)"
+    fi
+
     log_success "Library verification completed"
 }
 
@@ -320,6 +371,9 @@ main() {
             --skip-build)
                 SKIP_BUILD=1
                 ;;
+            --force)
+                FORCE=1
+                ;;
             --help)
                 cat << EOF
 Usage: $0 [OPTIONS]
@@ -330,6 +384,7 @@ Options:
     --clean         Clean the dist directory and exit
     --build-only    Only build libraries, don't create distribution
     --skip-build    Skip building, only create distribution (assumes libraries exist)
+    --force         Rebuild even if valid libraries already exist
     --help          Show this help message
 
 Environment Variables:
@@ -358,10 +413,17 @@ EOF
     log_info "Detected platform: $PLATFORM"
     log_info "Build type: $BUILD_TYPE"
 
-    # Build MuPDF
+    # Build MuPDF (reuse existing libraries when they verify, unless --force)
     if [ -z "$SKIP_BUILD" ]; then
-        build_mupdf
-        verify_libraries "$PLATFORM"
+        if [ -z "$FORCE" ] && \
+           [ -f "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" ] && \
+           [ -f "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a" ] && \
+           ( verify_libraries "$PLATFORM" ); then
+            log_info "Existing MuPDF libraries verified, skipping build (use --force to rebuild)"
+        else
+            build_mupdf
+            verify_libraries "$PLATFORM"
+        fi
     else
         log_warn "Skipping build (--skip-build specified)"
     fi
