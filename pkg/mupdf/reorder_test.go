@@ -23,7 +23,9 @@ func TestReorderPages_Reverse(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	input := filepath.Join(tmp, "in.pdf")
-	writer.Save(input)
+	if err := writer.Save(input); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
 	writer.Close()
 
 	output := filepath.Join(tmp, "out.pdf")
@@ -58,7 +60,9 @@ func TestExtractBookmarks_AfterAdd(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	input := filepath.Join(tmp, "in.pdf")
-	writer.Save(input)
+	if err := writer.Save(input); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
 	writer.Close()
 
 	withBM := filepath.Join(tmp, "bm.pdf")

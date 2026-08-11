@@ -43,8 +43,7 @@ func ExtractBookmarks(ctx *Context, path string) ([]OutlineItem, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	var doc *C.fz_document
-	doc = C.safe_open_document(ctx.ctx, cPath)
+	doc := C.safe_open_document(ctx.ctx, cPath)
 	if doc == nil {
 		return nil, fmt.Errorf("go-mupdf: ExtractBookmarks: failed to open %s", path)
 	}

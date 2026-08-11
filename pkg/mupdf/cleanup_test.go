@@ -10,9 +10,12 @@ import (
 )
 
 // finalizerSentinel is a small type used to observe that the garbage
-// collector actually ran finalizers during a test.
+// collector actually ran finalizers during a test. The padding is
+// load-bearing: a zero-size struct shares runtime.zerobase, and
+// runtime.SetFinalizer on such an object never fires. The field is
+// deliberately unread, hence the blank name.
 type finalizerSentinel struct {
-	pad [16]byte
+	_ [16]byte
 }
 
 // TestResourceCleanupWithFinalizers tests that finalizers properly clean up resources.
@@ -71,7 +74,6 @@ func TestResourceCleanupWithFinalizers(t *testing.T) {
 	text = nil
 	page = nil
 	doc = nil
-	sentinel = nil
 
 	// Force GC until the sentinel finalizer has run (or we time out)
 	deadline := time.Now().Add(2 * time.Second)
