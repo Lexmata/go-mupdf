@@ -1,17 +1,23 @@
 name: Release static libraries
 
 # Builds go-mupdf's MuPDF static-library archives and publishes them as GitHub
-# Release assets. Each platform is built NATIVELY inside a container of its own
-# architecture — never cross-compiled. MuPDF wraps its font/resource blobs
-# (*.otf.o, *.cff.o, *.zip.o) with the host ld/objcopy; a cross-compile
+# Release assets. Each platform is built NATIVELY on a matching-arch GitHub
+# runner (ubuntu-24.04 for amd64, ubuntu-24.04-arm for arm64) — never
+# cross-compiled, no QEMU. MuPDF wraps its font/resource blobs (*.otf.o,
+# *.cff.o, *.zip.o) with the host ld/objcopy; a cross-compile
 # (CC=aarch64-linux-gnu-gcc on an x86-64 host) compiles the C as aarch64 but
 # wraps the blobs as x86-64, producing a mixed-arch archive that links on the
 # build host yet fails on the target with "incompatible with aarch64 output".
 # That is exactly how the Bitbucket-built v1.9.2 linux-arm64 artifact shipped
-# broken. Building in a matching-arch container (arm64 via QEMU) keeps gcc, ld
-# and objcopy all the target arch, so the whole archive is one architecture.
-# scripts/build-static-libs.sh then verifies every object member and fails the
-# build if any is foreign-arch.
+# broken. A native runner keeps gcc, ld and objcopy all one arch, so the whole
+# archive is single-arch; scripts/build-static-libs.sh then verifies every
+# object member and fails the build if any is foreign-arch. Native arm runners
+# also replaced QEMU emulation, which took ~30-60 min per arm64 build.
+#
+# Both legs pin ubuntu-24.04 (glibc 2.39) to match the consumer's ubuntu:24.04
+# runtime: the static .a files reference glibc symbols resolved at the
+# consumer's final link, so building against a newer glibc floor than the
+# runtime image would break at deploy.
 
 on:
   push:
@@ -28,22 +34,19 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.platform }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: true
       matrix:
         include:
           - platform: linux-amd64
-            docker_platform: linux/amd64
+            runs_on: ubuntu-24.04
           - platform: linux-arm64
-            docker_platform: linux/arm64
+            runs_on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Set up QEMU for cross-arch containers
-        uses: docker/setup-qemu-action@v3
 
       - name: Resolve version
         id: version
@@ -55,27 +58,22 @@ jobs:
           else
             version="${GITHUB_REF_NAME#v}"
           fi
-          # Reject anything that isn't a plain semver — this value is passed to a
-          # shell inside the build container, so an unvalidated dispatch input
-          # would be a command-injection vector.
+          # Reject anything that isn't a plain semver — this value is passed to
+          # the build script via env, so an unvalidated dispatch input would be
+          # a command-injection vector.
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Invalid version '$version'; expected N.N.N" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config unzip binutils
+
       - name: Build static libraries (native ${{ matrix.platform }})
-        run: |
-          docker run --rm --platform=${{ matrix.docker_platform }} \
-            -v "$PWD:/src" -w /src \
-            -e VERSION="${{ steps.version.outputs.version }}" \
-            public.ecr.aws/docker/library/ubuntu:24.04 \
-            bash -c '
-              set -e
-              apt-get update
-              apt-get install -y build-essential pkg-config unzip binutils
-              ./scripts/build-static-libs.sh
-            '
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/build-static-libs.sh
 
       - name: Show package
         run: ls -lh dist/ && cat dist/*.sha256
