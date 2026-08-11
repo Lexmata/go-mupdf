@@ -115,12 +115,22 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
-          gh release create "${{ steps.tag.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --title "${{ steps.tag.outputs.tag }}" \
-            --generate-notes \
-            dist/*.tar.gz dist/*.sha256 \
-          || gh release upload "${{ steps.tag.outputs.tag }}" \
-            --repo "${{ github.repository }}" --clobber \
-            dist/*.tar.gz dist/*.sha256
+          # Create the release; on re-run (workflow_dispatch for an existing
+          # version) fall through to uploading assets. Only "already exists" is
+          # a recoverable create failure — anything else (denied contents:write,
+          # rate limit, bad tag) must fail loudly rather than be masked behind a
+          # subsequent upload error.
+          if gh release create "$TAG" --repo "$REPO" --title "$TAG" \
+                --generate-notes dist/*.tar.gz dist/*.sha256 2> create.err; then
+            cat create.err >&2 || true
+          elif grep -qi "already exists" create.err; then
+            echo "Release $TAG exists; uploading assets."
+            gh release upload "$TAG" --repo "$REPO" --clobber dist/*.tar.gz dist/*.sha256
+          else
+            echo "Release creation failed for a reason other than a duplicate tag:" >&2
+            cat create.err >&2
+            exit 1
+          fi

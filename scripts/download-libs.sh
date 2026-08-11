@@ -123,20 +123,17 @@ download_failed() {
     exit 1
 }
 
-if command -v gh >/dev/null 2>&1; then
-    # gh handles private-repo auth and the asset-id lookup in one step.
-    GH_TOKEN="${GH_TOKEN_VALUE}" gh release download "${TAG}" \
-        --repo "${GH_REPO}" --pattern "${ASSET}" --output "mupdf-libs.tar.gz" \
-        || download_failed "gh release download failed"
-elif command -v curl >/dev/null 2>&1; then
-    [ -n "${GH_TOKEN_VALUE}" ] || download_failed "no GITHUB_TOKEN/GH_TOKEN set and gh unavailable; cannot read private release assets"
-    # Resolve the asset's API URL from the release metadata, then fetch it with
-    # Accept: application/octet-stream (the documented way to download a
-    # private-repo asset — the browser_download_url 404s without a session).
-    # GitHub returns pretty-printed JSON: within each asset object the "url"
-    # field precedes "name", so track the last-seen url and emit it when the
-    # matching name line appears. No jq dependency (build image lacks it).
-    ASSET_URL=$(curl -fsSL \
+# Resolve a release asset's API download URL by name, from the release metadata.
+# Accept: application/octet-stream is the documented way to fetch a private-repo
+# asset — its browser_download_url 404s without a session cookie. GitHub returns
+# pretty-printed JSON in which each asset object lists "url" before "name", so
+# track the last-seen assets URL and emit it when the matching name appears. No
+# jq dependency (the build image lacks it). If GitHub ever minifies this JSON
+# the line-based match simply finds nothing and the caller fails safe — it can
+# never resolve to the WRONG asset.
+resolve_asset_url() {
+    local want="$1"
+    curl -fsSL \
         -H "Authorization: Bearer ${GH_TOKEN_VALUE}" \
         -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/${GH_REPO}/releases/tags/${TAG}" \
@@ -146,19 +143,49 @@ elif command -v curl >/dev/null 2>&1; then
                       last_url=$(printf '%s' "$line" | sed -n 's/.*"url": *"\([^"]*\)".*/\1/p') ;;
                   *'"name":'*)
                       name=$(printf '%s' "$line" | sed -n 's/.*"name": *"\([^"]*\)".*/\1/p')
-                      [ "$name" = "${ASSET}" ] && { printf '%s\n' "$last_url"; break; } ;;
+                      [ "$name" = "$want" ] && { printf '%s\n' "$last_url"; break; } ;;
               esac
-          done)
-    [ -n "${ASSET_URL}" ] || download_failed "asset ${ASSET} not found in release ${TAG}"
+          done
+}
+
+fetch_asset_curl() {  # $1 = asset name, $2 = output path
+    local url
+    url=$(resolve_asset_url "$1")
+    [ -n "$url" ] || return 1
     curl -fL \
         -H "Authorization: Bearer ${GH_TOKEN_VALUE}" \
         -H "Accept: application/octet-stream" \
-        -o "mupdf-libs.tar.gz" "${ASSET_URL}" \
-        || download_failed "asset download failed"
+        -o "$2" "$url"
+}
+
+if command -v gh >/dev/null 2>&1; then
+    # gh handles private-repo auth and the asset-id lookup in one step.
+    GH_TOKEN="${GH_TOKEN_VALUE}" gh release download "${TAG}" \
+        --repo "${GH_REPO}" --pattern "${ASSET}" --output "mupdf-libs.tar.gz" \
+        || download_failed "gh release download failed"
+    GH_TOKEN="${GH_TOKEN_VALUE}" gh release download "${TAG}" \
+        --repo "${GH_REPO}" --pattern "${ASSET}.sha256" --output "mupdf-libs.tar.gz.sha256" \
+        || download_failed "checksum asset ${ASSET}.sha256 not available"
+elif command -v curl >/dev/null 2>&1; then
+    [ -n "${GH_TOKEN_VALUE}" ] || download_failed "no GITHUB_TOKEN/GH_TOKEN set and gh unavailable; cannot read private release assets"
+    fetch_asset_curl "${ASSET}" "mupdf-libs.tar.gz" \
+        || download_failed "asset ${ASSET} not found in release ${TAG}"
+    fetch_asset_curl "${ASSET}.sha256" "mupdf-libs.tar.gz.sha256" \
+        || download_failed "checksum asset ${ASSET}.sha256 not found in release ${TAG}"
 else
     echo "Error: neither gh nor curl found. Please install one of them."
     exit 1
 fi
+
+# Verify the download against its published checksum before trusting it. Compare
+# the hash fields directly rather than `sha256sum -c`, since the .sha256 names
+# the original tarball (go-mupdf-<ver>-<platform>.tar.gz), not our local name.
+EXPECTED_SHA=$(awk '{print $1}' "mupdf-libs.tar.gz.sha256" 2>/dev/null)
+ACTUAL_SHA=$(sha256sum "mupdf-libs.tar.gz" | awk '{print $1}')
+if [ -z "${EXPECTED_SHA}" ] || [ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]; then
+    download_failed "checksum mismatch (expected ${EXPECTED_SHA:-none}, got ${ACTUAL_SHA})"
+fi
+echo "✓ Checksum verified: ${ACTUAL_SHA}"
 
 # Extract
 echo "Extracting libraries..."

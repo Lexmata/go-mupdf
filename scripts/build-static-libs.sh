@@ -345,9 +345,11 @@ verify_libraries() {
             # `ar p` output yields no header here, which silently reduced the
             # scan to zero checked members (the "PASS" that verified nothing).
             # Extract each member to a temp file and read that instead.
+            # A RETURN trap would not fire here: the failure paths below call
+            # `exit`, and RETURN traps only run on a normal function return.
+            # Remove the temp file explicitly at every exit instead.
             local tmp_member
             tmp_member=$(mktemp)
-            trap 'rm -f "$tmp_member"' RETURN
             local lib
             for lib in "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a"; do
                 local total=0 checked=0 bad=0 member machine
@@ -364,15 +366,18 @@ verify_libraries() {
                     fi
                 done < <(ar t "$lib" 2>/dev/null)
                 if [ "$bad" -gt 0 ]; then
+                    rm -f "$tmp_member"
                     log_error "$(basename "$lib") has $bad/$checked object members with the wrong architecture (target $platform)"
                     exit 1
                 fi
                 if [ "$checked" -eq 0 ]; then
+                    rm -f "$tmp_member"
                     log_error "Could not determine the architecture of any of $total object members in $(basename "$lib"); refusing to certify an unverifiable archive"
                     exit 1
                 fi
                 log_success "$(basename "$lib") architecture verified: all $checked/$total object members are $expected_machine"
             done
+            rm -f "$tmp_member"
         else
             log_warn "No known ELF machine mapping for architecture '$target_arch', skipping architecture check"
         fi
