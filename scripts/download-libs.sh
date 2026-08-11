@@ -91,13 +91,14 @@ else
     VERSION=$(git -C "${PROJECT_ROOT}" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "1.3.2")
 fi
 
-# Artifacts are published as GitHub Release assets on the Lexmata mirror. The
-# repo is private, so asset downloads require a token: either `gh` already
-# authenticated, or GITHUB_TOKEN/GH_TOKEN in the environment (CI injects this).
+# Artifacts are published as GitHub Release assets on the Lexmata mirror, which
+# is public — so an asset downloads from its stable release-download URL with a
+# plain unauthenticated GET, no token and no API/JSON lookup required. Override
+# the repo with GO_MUPDF_GH_REPO if the mirror ever moves.
 GH_REPO="${GO_MUPDF_GH_REPO:-Lexmata/go-mupdf}"
 ASSET="go-mupdf-${VERSION}-${PLATFORM}.tar.gz"
 TAG="v${VERSION}"
-GH_TOKEN_VALUE="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+DOWNLOAD_URL="https://github.com/${GH_REPO}/releases/download/${TAG}/${ASSET}"
 
 echo "========================================"
 echo "Downloading pre-built MuPDF libraries"
@@ -106,8 +107,7 @@ echo "Target OS:           ${TARGET_OS}"
 echo "Target Architecture: ${TARGET_ARCH}"
 echo "Platform:            ${PLATFORM}"
 echo "Version:             ${VERSION}"
-echo "Repo:                ${GH_REPO}"
-echo "Asset:               ${ASSET} (release ${TAG})"
+echo "URL:                 ${DOWNLOAD_URL}"
 echo "========================================"
 
 # Create temporary directory for download
@@ -123,59 +123,21 @@ download_failed() {
     exit 1
 }
 
-# Resolve a release asset's API download URL by name, from the release metadata.
-# Accept: application/octet-stream is the documented way to fetch a private-repo
-# asset — its browser_download_url 404s without a session cookie. GitHub returns
-# pretty-printed JSON in which each asset object lists "url" before "name", so
-# track the last-seen assets URL and emit it when the matching name appears. No
-# jq dependency (the build image lacks it). If GitHub ever minifies this JSON
-# the line-based match simply finds nothing and the caller fails safe — it can
-# never resolve to the WRONG asset.
-resolve_asset_url() {
-    local want="$1"
-    curl -fsSL \
-        -H "Authorization: Bearer ${GH_TOKEN_VALUE}" \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${GH_REPO}/releases/tags/${TAG}" \
-        | while IFS= read -r line; do
-              case "$line" in
-                  *'"url":'*'/releases/assets/'*)
-                      last_url=$(printf '%s' "$line" | sed -n 's/.*"url": *"\([^"]*\)".*/\1/p') ;;
-                  *'"name":'*)
-                      name=$(printf '%s' "$line" | sed -n 's/.*"name": *"\([^"]*\)".*/\1/p')
-                      [ "$name" = "$want" ] && { printf '%s\n' "$last_url"; break; } ;;
-              esac
-          done
+fetch() {  # $1 = url, $2 = output path
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$2" "$1"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$2" "$1"
+    else
+        echo "Error: neither curl nor wget found. Please install one of them." >&2
+        exit 1
+    fi
 }
 
-fetch_asset_curl() {  # $1 = asset name, $2 = output path
-    local url
-    url=$(resolve_asset_url "$1")
-    [ -n "$url" ] || return 1
-    curl -fL \
-        -H "Authorization: Bearer ${GH_TOKEN_VALUE}" \
-        -H "Accept: application/octet-stream" \
-        -o "$2" "$url"
-}
-
-if command -v gh >/dev/null 2>&1; then
-    # gh handles private-repo auth and the asset-id lookup in one step.
-    GH_TOKEN="${GH_TOKEN_VALUE}" gh release download "${TAG}" \
-        --repo "${GH_REPO}" --pattern "${ASSET}" --output "mupdf-libs.tar.gz" \
-        || download_failed "gh release download failed"
-    GH_TOKEN="${GH_TOKEN_VALUE}" gh release download "${TAG}" \
-        --repo "${GH_REPO}" --pattern "${ASSET}.sha256" --output "mupdf-libs.tar.gz.sha256" \
-        || download_failed "checksum asset ${ASSET}.sha256 not available"
-elif command -v curl >/dev/null 2>&1; then
-    [ -n "${GH_TOKEN_VALUE}" ] || download_failed "no GITHUB_TOKEN/GH_TOKEN set and gh unavailable; cannot read private release assets"
-    fetch_asset_curl "${ASSET}" "mupdf-libs.tar.gz" \
-        || download_failed "asset ${ASSET} not found in release ${TAG}"
-    fetch_asset_curl "${ASSET}.sha256" "mupdf-libs.tar.gz.sha256" \
-        || download_failed "checksum asset ${ASSET}.sha256 not found in release ${TAG}"
-else
-    echo "Error: neither gh nor curl found. Please install one of them."
-    exit 1
-fi
+fetch "${DOWNLOAD_URL}" "mupdf-libs.tar.gz" \
+    || download_failed "could not download ${ASSET}"
+fetch "${DOWNLOAD_URL}.sha256" "mupdf-libs.tar.gz.sha256" \
+    || download_failed "could not download ${ASSET}.sha256"
 
 # Verify the download against its published checksum before trusting it. Compare
 # the hash fields directly rather than `sha256sum -c`, since the .sha256 names
