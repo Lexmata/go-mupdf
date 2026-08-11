@@ -20,7 +20,7 @@ make test
 ```
 
 The `make setup` command automatically:
-1. ✅ Downloads pre-built MuPDF libraries from Bitbucket (if available for your platform)
+1. ✅ Downloads pre-built MuPDF libraries from GitHub Releases (if available for your platform)
 2. ✅ Falls back to building from source if pre-built unavailable
 3. ✅ Caches libraries for faster subsequent builds
 
@@ -46,7 +46,7 @@ make build
 
 **What happens during setup:**
 - Detects your platform (linux-amd64, darwin-arm64, etc.)
-- Downloads pre-built MuPDF libraries from Bitbucket Downloads
+- Downloads pre-built MuPDF libraries from GitHub Releases
 - Extracts libraries to `third_party/mupdf/build/release`
 - If pre-built unavailable, automatically builds from source
 
@@ -165,9 +165,9 @@ The setup process intelligently handles MuPDF libraries with multiple fallback m
 1. **Check Existing Libraries** ✅
    - If libraries already exist in `third_party/mupdf/build/release`, skip setup
 
-2. **Download Pre-built from Bitbucket** 🚀
+2. **Download Pre-built from GitHub Releases** 🚀
    - Automatically detects your platform (linux-amd64, darwin-arm64, etc.)
-   - Downloads matching release from Bitbucket Downloads
+   - Downloads matching release from GitHub Releases
    - Extracts and installs in seconds
    - **Available for:** linux-amd64 and linux-arm64 only — macOS and Windows fall back to building from source automatically
 
@@ -244,38 +244,6 @@ sudo apt-get install build-essential gcc g++ make pkg-config \
 
 ## CI/CD Considerations
 
-### Bitbucket Pipelines (Optimized)
-
-Our CI/CD pipeline is optimized to reuse pre-built libraries:
-
-```yaml
-# Build MuPDF once (only on releases)
-- step:
-    name: Build MuPDF Libraries
-    caches:
-      - mupdf-libs
-    script:
-      - ./scripts/build-mupdf-artifact.sh
-    artifacts:
-      - mupdf-artifacts/**
-
-# Reuse in all test/build steps
-- step:
-    name: Run Tests
-    caches:
-      - mupdf-libs
-    script:
-      - ./scripts/install-prebuilt-libs.sh  # Uses cache or downloads
-      - go test ./pkg/mupdf/
-```
-
-**Benefits:**
-- ⚡ **90% faster** builds by reusing MuPDF compilation
-- 💾 Caches libraries between pipeline runs
-- 📦 Automatically uploads release artifacts
-
-See `docs/CI_CD_OPTIMIZATION.md` for full details.
-
 ### GitHub Actions
 
 Using pre-built libraries:
@@ -350,7 +318,6 @@ export MUPDF_PLATFORM=linux-amd64
 
 ## Related Documentation
 
-- **CI/CD Optimization**: See `docs/CI_CD_OPTIMIZATION.md`
-- **Bitbucket Downloads Setup**: See `docs/BITBUCKET_DOWNLOADS_SETUP.md`
-- **Pipeline Monitoring**: See `docs/PIPELINE_MONITORING.md`
+- **GitHub Actions**: See `.github/workflows/release.yml` for the CI/CD workflow
+- **Build System**: See `docs/BUILD_SYSTEM.md` for build details
 

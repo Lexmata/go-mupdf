@@ -6,18 +6,18 @@ This document describes the automated release process for the Go MuPDF wrapper p
 
 ## 🎯 Release Workflow
 
-### 1. Automated Pipeline Triggers
+### 1. Automated Workflow Triggers
 - **Tag Creation**: Any tag matching `v*` pattern (e.g., `v1.0.0`, `v1.1.0-rc.1`)
 - **Comprehensive Testing**: Full test suite with coverage reporting
 - **Quality Gates**: Code formatting, linting, and static analysis
 - **Artifact Generation**: Binaries, documentation, and source archives
-- **Automatic Upload**: Release artifacts to Bitbucket Downloads
+- **Automatic Upload**: Release artifacts published as GitHub Release assets
 
 ### 2. Release Artifacts Generated
 - **Static Library Packages**: `dist/go-mupdf-<version>-linux-amd64.tar.gz` and `dist/go-mupdf-<version>-linux-arm64.tar.gz` (pre-built MuPDF libraries and headers; version has no `v` prefix)
 - **Checksums**: A per-file `.tar.gz.sha256` alongside each package
 - **Coverage Data**: `release-coverage.out` from the release test run
-- **Upload**: Packages and checksums are uploaded to Bitbucket Downloads
+- **Upload**: Packages and checksums are published as GitHub Release assets
 
 ## 🛠️ Using the Release Script
 
@@ -98,8 +98,8 @@ git push origin v1.1.0
 ### What Happens When You Create a Tag
 
 1. **Trigger Detection**
-   - Bitbucket detects new tag matching `v*`
-   - Release pipeline automatically starts
+   - GitHub Actions detects new tag matching `v*`
+   - Release workflow automatically starts
    - Environment variables set (TAG_NAME, COMMIT, etc.)
 
 2. **Environment Setup**
@@ -126,9 +126,9 @@ git push origin v1.1.0
    Note: the version in the filenames has no `v` prefix (it is derived from the tag with the prefix stripped).
 
 5. **Artifact Upload**
-   - Upload to Bitbucket Downloads section
-   - Requires BITBUCKET_USERNAME and BITBUCKET_DOWNLOADS_TOKEN repository variables
-   - Files available for public download (also kept as pipeline artifacts)
+   - Published as GitHub Release assets
+   - Workflow uses `GITHUB_TOKEN` (automatically provided)
+   - Files available for public download at https://github.com/Lexmata/go-mupdf/releases
 
 ## 📦 Release Artifacts
 
@@ -142,9 +142,9 @@ git push origin v1.1.0
 
 ### Download and Verification
 ```bash
-# Download artifacts (replace 1.4.7 with the released version)
-curl -L -O "https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.4.7-linux-amd64.tar.gz"
-curl -L -O "https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-1.4.7-linux-amd64.tar.gz.sha256"
+# Download artifacts from GitHub Releases (replace 1.4.7 with the released version)
+curl -L -O "https://github.com/Lexmata/go-mupdf/releases/download/v1.4.7/go-mupdf-1.4.7-linux-amd64.tar.gz"
+curl -L -O "https://github.com/Lexmata/go-mupdf/releases/download/v1.4.7/go-mupdf-1.4.7-linux-amd64.tar.gz.sha256"
 
 # Verify checksum
 sha256sum -c go-mupdf-1.4.7-linux-amd64.tar.gz.sha256
@@ -156,28 +156,14 @@ ls go-mupdf-1.4.7-linux-amd64/lib/   # libmupdf.a, libmupdf-third.a
 
 ## 🔧 Configuration
 
-### Environment Variables (Optional)
-```bash
-# For automatic upload to Bitbucket Downloads
-export BITBUCKET_DOWNLOADS_TOKEN="your-access-token"
+### Environment Variables
+GitHub Actions automatically provides:
+- `GITHUB_TOKEN` - For publishing GitHub Releases
+- `GITHUB_REF` - The git tag reference
+- `GITHUB_SHA` - The commit hash
+- `GITHUB_REPOSITORY` - Repository owner/name
 
-# Pipeline automatically sets these:
-# BITBUCKET_TAG          - The git tag name
-# BITBUCKET_COMMIT       - The commit hash
-# BITBUCKET_REPO_OWNER   - Repository owner
-# BITBUCKET_REPO_SLUG    - Repository name
-```
-
-### Creating Download Token
-1. Go to Bitbucket Settings → App Passwords
-2. Create new app password with permissions:
-   - ✅ **Repositories: Write** (for downloads)
-   - ✅ **Repositories: Admin** (if needed)
-3. Add token to repository variables:
-   - Repository Settings → Repository variables
-   - Name: `BITBUCKET_DOWNLOADS_TOKEN`
-   - Value: Your app password
-   - Secured: ✅ Yes
+No manual configuration needed for releases.
 
 ## 📊 Release Metrics
 

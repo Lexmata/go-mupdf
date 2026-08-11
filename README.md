@@ -78,10 +78,10 @@ Skip compilation and use pre-built MuPDF libraries:
 
 ```bash
 # Download pre-built libraries for your platform
-# Replace <VERSION> with the current release (see the VERSION file or the
-# Bitbucket Downloads page). Pre-built packages exist for linux-amd64 and
-# linux-arm64; other platforms build from source automatically via `make setup`.
-wget https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-<VERSION>-linux-amd64.tar.gz
+# Replace <VERSION> with the current release (see the VERSION file or
+# GitHub Releases). Pre-built packages exist for linux-amd64 and linux-arm64;
+# other platforms build from source automatically via `make setup`.
+wget https://github.com/Lexmata/go-mupdf/releases/download/v<VERSION>/go-mupdf-<VERSION>-linux-amd64.tar.gz
 
 # Extract to project directory
 tar -xzf go-mupdf-<VERSION>-linux-amd64.tar.gz
@@ -546,19 +546,6 @@ make docker-shell
 - ✅ Catches environment-specific issues
 - ✅ Ensures consistent test results
 - ✅ No local environment pollution
-
-See the [Docker Testing Guide](docs/DOCKER_TESTING.md) for detailed usage.
-
-### CI/CD Optimization
-
-The project uses an optimized CI/CD pipeline that builds MuPDF once and reuses it across all steps:
-
-- **50-60% faster** pipeline execution
-- **70-75% faster** with cache
-- Parallel steps use pre-built artifacts
-- Consistent builds across all steps
-
-See the [CI/CD Optimization Guide](docs/CI_CD_OPTIMIZATION.md) for details.
 
 ### Test Categories
 

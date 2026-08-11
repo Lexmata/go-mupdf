@@ -2,19 +2,14 @@
 
 This document explains how to build go-mupdf on macOS and enable automated macOS builds.
 
-## ⚠️ Bitbucket Limitation
+## CI/CD Status
 
-**Bitbucket Pipelines does not provide managed macOS runners**, even with Premium. To get automated macOS builds, you have two options:
+The repository uses **GitHub Actions** for automated builds:
 
-1. **GitHub Actions** (Recommended) - Free macOS runners, builds upload to Bitbucket
-2. **Self-hosted runners** - Run your own macOS build machines
-
-## Current Status
-
-- ✅ **Linux AMD64** - Automated in Bitbucket Pipelines
-- ✅ **Linux ARM64** - Automated in Bitbucket Pipelines (cross-compile)
-- ⚠️ **Darwin AMD64** - Requires GitHub Actions or self-hosted runner
-- ⚠️ **Darwin ARM64** - Requires GitHub Actions or self-hosted runner
+- ✅ **Linux AMD64** - Automated via GitHub Actions
+- ✅ **Linux ARM64** - Automated via GitHub Actions
+- ⚠️ **Darwin AMD64** - Can be added to GitHub Actions workflow if needed
+- ⚠️ **Darwin ARM64** - Can be added to GitHub Actions workflow if needed
 
 ## Quick Start (Manual Build)
 
@@ -38,106 +33,10 @@ go build ./pkg/mupdf/
 ./scripts/build-static-libs.sh
 ```
 
-## Automated Builds with Bitbucket Pipelines
+## Automated Builds with GitHub Actions
 
-### ⚠️ Limitation
+GitHub Actions provides managed macOS runners. To add macOS builds to the workflow, extend `.github/workflows/release.yml` with macOS-specific jobs.
 
-**Bitbucket Pipelines does not offer managed macOS runners**, regardless of your plan tier. Unlike GitHub Actions, you cannot simply specify a macOS image and have Bitbucket run it.
-
-### Options for Automated macOS Builds
-
-1. **GitHub Actions** (Recommended - see below)
-2. **Self-hosted Bitbucket runners** (requires your own Mac hardware)
-
-### Pipeline Configuration for macOS
-
-#### Darwin AMD64 (Intel Macs)
-
-```yaml
-- step:
-    name: Build Static Library Distribution (Darwin AMD64)
-    image: macos-12-xcode-14
-    caches:
-      - go
-    script:
-      - brew install make gcc pkg-config
-      - git submodule update --init --recursive
-      - export TAG_NAME=$BITBUCKET_TAG
-      - export VERSION=${TAG_NAME#v}
-      - export GOOS=darwin
-      - export GOARCH=amd64
-      - export CGO_ENABLED=1
-      - echo "Building static library distribution for darwin-amd64 version: $VERSION"
-      - ./scripts/build-static-libs.sh
-      - echo "=== Darwin AMD64 Distribution Package Created ==="
-      - ls -lh dist/
-      - cat dist/*.sha256
-      - echo "===================================="
-    after-script:
-      - |
-        TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
-        USERNAME="${BITBUCKET_USERNAME}"
-        if [ ! -z "$TOKEN" ] && [ ! -z "$USERNAME" ]; then
-          echo "Uploading Darwin AMD64 distribution packages to Bitbucket Downloads..."
-          for file in dist/*.tar.gz dist/*.sha256; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              echo "Uploading $filename..."
-              curl -X POST \
-                "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
-                -u "$USERNAME:$TOKEN" \
-                -F "files=@$file"
-            fi
-          done
-        fi
-    artifacts:
-      - dist/*.tar.gz
-      - dist/*.sha256
-```
-
-#### Darwin ARM64 (Apple Silicon)
-
-```yaml
-- step:
-    name: Build Static Library Distribution (Darwin ARM64)
-    image: macos-14-xcode-15
-    caches:
-      - go
-    script:
-      - brew install make gcc pkg-config
-      - git submodule update --init --recursive
-      - export TAG_NAME=$BITBUCKET_TAG
-      - export VERSION=${TAG_NAME#v}
-      - export GOOS=darwin
-      - export GOARCH=arm64
-      - export CGO_ENABLED=1
-      - echo "Building static library distribution for darwin-arm64 version: $VERSION"
-      - ./scripts/build-static-libs.sh
-      - echo "=== Darwin ARM64 Distribution Package Created ==="
-      - ls -lh dist/
-      - cat dist/*.sha256
-      - echo "===================================="
-    after-script:
-      - |
-        TOKEN="${BITBUCKET_DOWNLOADS_TOKEN:-$BITBUCKET_API_TOKEN}"
-        USERNAME="${BITBUCKET_USERNAME}"
-        if [ ! -z "$TOKEN" ] && [ ! -z "$USERNAME" ]; then
-          echo "Uploading Darwin ARM64 distribution packages to Bitbucket Downloads..."
-          for file in dist/*.tar.gz dist/*.sha256; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              echo "Uploading $filename..."
-              curl -X POST \
-                "https://api.bitbucket.org/2.0/repositories/$BITBUCKET_REPO_OWNER/$BITBUCKET_REPO_SLUG/downloads" \
-                -u "$USERNAME:$TOKEN" \
-                -F "files=@$file"
-            fi
-          done
-        fi
-    artifacts:
-      - dist/*.tar.gz
-      - dist/*.sha256
-```
 
 ## Manual Distribution Creation
 
@@ -157,29 +56,9 @@ export TAG_NAME=v1.4.0
 ./scripts/build-static-libs.sh
 ```
 
-### Upload to Bitbucket Downloads
+## GitHub Actions for macOS Builds
 
-```bash
-# Set credentials
-export BITBUCKET_USERNAME="your-username"
-export BITBUCKET_DOWNLOADS_TOKEN="your-app-password"
-export REPO_OWNER="lexmata"
-export REPO_SLUG="go-mupdf"
-
-# Upload distribution
-for file in dist/*.tar.gz dist/*.sha256; do
-  filename=$(basename "$file")
-  echo "Uploading $filename..."
-  curl -X POST \
-    "https://api.bitbucket.org/2.0/repositories/$REPO_OWNER/$REPO_SLUG/downloads" \
-    -u "$BITBUCKET_USERNAME:$BITBUCKET_DOWNLOADS_TOKEN" \
-    -F "files=@$file"
-done
-```
-
-## GitHub Actions Alternative
-
-If Bitbucket macOS runners are not available, you can use GitHub Actions for macOS builds:
+The repository uses GitHub Actions for automated builds. To add macOS support, extend `.github/workflows/release.yml`:
 
 ### `.github/workflows/macos-release.yml`
 
@@ -272,7 +151,7 @@ sudo xcode-select --reset
 
 ## Cost Considerations
 
-### Bitbucket Pipelines
+### CI/CD
 
 - **macOS runners** cost more build minutes than Linux
 - Check current pricing: https://bitbucket.org/product/pricing

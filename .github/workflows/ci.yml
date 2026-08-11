@@ -1,0 +1,62 @@
+name: CI
+
+# Lint + test on every push and PR. Replaces the old Bitbucket pipeline, whose
+# lint/vet/test steps all ended in `|| echo "(non-blocking)"` and so never
+# actually failed a build. Here every check is blocking. Runs native amd64
+# only — the cgo package needs the MuPDF static libs, which we build from the
+# submodule; arch-specific artifact builds live in release.yml.
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    name: Lint & test (linux-amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config unzip binutils
+
+      # Build the MuPDF static libs into third_party/mupdf/build/release so the
+      # cgo package links. --build-only skips distribution packaging.
+      - name: Build MuPDF static libraries
+        run: ./scripts/build-static-libs.sh --build-only
+
+      - name: gofmt
+        run: |
+          # Our Go only — third_party/mupdf is a C submodule.
+          unformatted=$(git ls-files '*.go' | grep -v '^third_party/' | xargs gofmt -l)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./pkg/...
+
+      - name: Test (race + coverage)
+        run: go test -race -coverprofile=coverage.out ./pkg/...
+
+      # Pinned to the version the repo used before (known-good with this code
+      # and Go 1.24). Bump deliberately; a floating "latest" turns a new linter
+      # release into a surprise red build.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: ./pkg/...

@@ -11,7 +11,7 @@ MuPDF is a C library for PDF (and EPUB/XPS/CBZ/SVG) rendering, manipulation, and
 
 ## Go conventions
 
-- **Go version:** follow the version pinned in `bitbucket-pipelines.yml` and the Dockerfile. Bump those two and `go.mod` together — never let them drift.
+- **Go version:** follow the version pinned in the Dockerfile and `.github/workflows/release.yml`. Bump those two and `go.mod` together — never let them drift.
 - Use the current toolchain (compiler, stdlib, runtime) that the pipeline image ships with. Don't special-case older Go versions.
 - CGO imports are concentrated in `internal/bindings/` (or equivalent) — application code should not talk to C directly. This keeps the unsafe surface area small and testable.
 

@@ -47,27 +47,27 @@ git branch -d release/X.Y.Z
 
 ### 3. Verify CI/CD
 
-After pushing the tag, the CI/CD pipeline will automatically:
+After pushing the tag, GitHub Actions will automatically:
 
 1. Run all tests
 2. Build release artifacts
 3. **Build static library distribution packages**
-4. Upload to Bitbucket Downloads (if configured)
+4. Publish as GitHub Release
 
-Check the pipeline at:
-https://bitbucket.org/lexmata/go-mupdf/addon/pipelines/home
+Check the workflow at:
+https://github.com/Lexmata/go-mupdf/actions
 
 ### 4. Distribution Packages
 
-The pipeline automatically creates:
+GitHub Actions automatically creates and publishes:
 
-- `go-mupdf-X.Y.Z-linux-amd64.tar.gz` - Static libraries for Linux
-- `go-mupdf-X.Y.Z-linux-amd64.tar.gz.sha256` - Checksum
-- Release artifacts (source, binaries, docs)
+- `go-mupdf-X.Y.Z-linux-amd64.tar.gz` - Static libraries for Linux AMD64
+- `go-mupdf-X.Y.Z-linux-arm64.tar.gz` - Static libraries for Linux ARM64
+- `go-mupdf-X.Y.Z-linux-amd64.tar.gz.sha256` - Checksum for AMD64
+- `go-mupdf-X.Y.Z-linux-arm64.tar.gz.sha256` - Checksum for ARM64
 
-These are available in:
-- Pipeline artifacts
-- Bitbucket Downloads (if `BITBUCKET_DOWNLOADS_TOKEN` is configured)
+These are available as GitHub Release assets at:
+https://github.com/Lexmata/go-mupdf/releases
 
 ### 5. Manual Distribution Build (Optional)
 
@@ -125,41 +125,12 @@ make dist  # Creates go-mupdf-X.Y.Z-linux-amd64.tar.gz
 # On macOS ARM64
 make dist  # Creates go-mupdf-X.Y.Z-darwin-arm64.tar.gz
 
-# Upload all to Bitbucket Downloads or release page
+# Upload all to GitHub Releases
 ```
 
 ## Hosting Distribution Packages
 
-### Option 1: Bitbucket Downloads (Automated)
-
-Configure the `BITBUCKET_DOWNLOADS_TOKEN` environment variable in Bitbucket Pipelines:
-
-1. Go to Repository Settings → Pipelines → Repository variables
-2. Add variable: `BITBUCKET_DOWNLOADS_TOKEN`
-3. Set value to your Bitbucket App Password with Downloads permission
-4. On release tag push, packages are automatically uploaded
-
-### Option 2: Manual Upload to Bitbucket
-
-```bash
-# Upload manually using curl
-curl -X POST \
-  "https://api.bitbucket.org/2.0/repositories/lexmata/go-mupdf/downloads" \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "files=@dist/go-mupdf-1.1.0-linux-amd64.tar.gz"
-```
-
-### Option 3: GitHub Releases
-
-If mirroring to GitHub:
-
-```bash
-gh release create v1.1.0 \
-  dist/go-mupdf-1.1.0-*.tar.gz \
-  dist/go-mupdf-1.1.0-*.sha256 \
-  --title "Release v1.1.0" \
-  --notes-file CHANGELOG.md
-```
+Packages are automatically published to GitHub Releases by the workflow in `.github/workflows/release.yml`. No manual upload is needed.
 
 ## Testing Distribution Packages
 
@@ -269,18 +240,15 @@ golangci-lint run
 
 ### Required Secrets
 
-For full CI/CD functionality, configure these secrets in Bitbucket Pipelines:
+For full CI/CD functionality, configure these secrets in GitHub Actions:
 
 - `CODECOV_TOKEN` - For code coverage reporting
-- `BITBUCKET_DOWNLOADS_TOKEN` - For automatic release uploads
 
-### Pipeline Triggers
+### Workflow Triggers
 
-- **Main branch**: Full test suite + coverage
-- **Develop branch**: Standard tests
-- **Feature branches**: Basic validation
-- **Pull requests**: Quick tests + race detection
-- **Tags (v*)**: Full release pipeline + distribution build
+The GitHub Actions workflow (`.github/workflows/release.yml`) triggers on:
+
+- **Tags (v*)**: Full release workflow + distribution build + GitHub Release publication
 
 ## Troubleshooting
 

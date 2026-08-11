@@ -95,8 +95,8 @@ download_prebuilt() {
     log_info "Platform: $platform"
     log_info "Version: $version"
     
-    # Try Bitbucket Downloads
-    local base_url="https://bitbucket.org/lexmata/go-mupdf/downloads"
+    # Try GitHub Releases
+    local base_url="https://github.com/Lexmata/go-mupdf/releases/download/v${version}"
     local filename="go-mupdf-${version}-${platform}.tar.gz"
     local url="${base_url}/${filename}"
     

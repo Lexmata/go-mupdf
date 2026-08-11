@@ -20,7 +20,7 @@ go build ./pkg/mupdf/
 ```
 
 The `make setup` command runs `scripts/install.sh` which:
-1. Runs `scripts/download-libs.sh` to download pre-built libraries from Bitbucket Downloads (if available for your platform)
+1. Runs `scripts/download-libs.sh` to download pre-built libraries from GitHub Releases (if available for your platform)
 2. Falls back to `scripts/setup-mupdf.sh` to build from source if the download fails
 3. Source builds use the correct flags: `make libs USE_SYSTEM_LIBS=no HAVE_X11=no HAVE_GLUT=no build=release`
 
@@ -274,15 +274,7 @@ Typical build times:
 
 ## CI/CD Integration
 
-The CI/CD pipeline uses a three-tier approach:
-
-1. **Build Once**: MuPDF is built once per pipeline run
-2. **Artifact Sharing**: Built libraries are shared across all pipeline steps
-3. **Caching**: Libraries are cached, keyed on `.gitmodules` and the `mupdf.lock` pin file
-
-This reduces build time by 50-75% compared to building in every step.
-
-See [CI/CD Optimization Guide](CI_CD_OPTIMIZATION.md) for details.
+GitHub Actions builds MuPDF libraries and publishes them as GitHub Release assets. See `.github/workflows/release.yml` for the workflow.
 
 ## References
 

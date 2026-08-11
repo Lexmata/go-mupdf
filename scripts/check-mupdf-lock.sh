@@ -1,12 +1,11 @@
 #!/bin/bash
 # Verify that mupdf.lock matches the committed MuPDF submodule pointer.
 #
-# mupdf.lock is part of the Bitbucket Pipelines cache key for the pre-built
-# MuPDF libraries (see the mupdf-libs cache in bitbucket-pipelines.yml).
-# .gitmodules does not change when the submodule pointer moves, so without
-# this pin the cache would serve libraries built from a different MuPDF
-# commit. Nothing about that failure is visible at build time, so the pin is
-# checked explicitly here.
+# mupdf.lock is a submodule-drift guard. .gitmodules does not change when
+# the submodule pointer moves, so without this pin it would be hard to detect
+# when the MuPDF submodule has drifted from what was tested. The pin is
+# checked explicitly by the pre-commit hook to catch drift before it is
+# committed.
 #
 # Usage:
 #   scripts/check-mupdf-lock.sh            # check HEAD's submodule pointer

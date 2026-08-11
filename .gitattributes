@@ -78,7 +78,6 @@ LICENSE text eol=lf
 *.gitignore text eol=lf
 
 # YAML files
-bitbucket-pipelines.yml text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 

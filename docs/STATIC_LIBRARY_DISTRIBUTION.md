@@ -174,64 +174,13 @@ func main() {
 
 ## CI/CD Integration
 
-### Bitbucket Pipelines
-
-Add distribution building to your pipeline:
-
-```yaml
-pipelines:
-  tags:
-    'v*':
-      - step:
-          name: Build Distribution Packages
-          image: golang:1.23
-          script:
-            - apt-get update && apt-get install -y build-essential
-            - git submodule update --init --recursive
-            - make dist
-          artifacts:
-            - dist/*.tar.gz
-            - dist/*.sha256
-```
-
 ### GitHub Actions
 
-```yaml
-name: Build Distribution
-on:
-  release:
-    types: [created]
-
-jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Build distribution
-        run: make dist
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: linux-amd64
-          path: dist/*.tar.gz
-```
+The repository uses GitHub Actions (`.github/workflows/release.yml`) to automatically build and publish distribution packages when a version tag is pushed.
 
 ## Hosting Distribution Packages
 
-### Option 1: Bitbucket Downloads
-
-Upload to Bitbucket's Downloads section:
-
-1. Go to your repository on Bitbucket
-2. Navigate to Downloads in the sidebar
-3. Upload the `.tar.gz` and `.sha256` files
-4. Users can download directly from Bitbucket
-
-### Option 2: GitHub Releases
-
-Attach to release tags:
+Distribution packages are automatically published as GitHub Release assets at https://github.com/Lexmata/go-mupdf/releases when a tag matching `v*` is pushed.
 
 ```bash
 # Using GitHub CLI

@@ -95,15 +95,15 @@ get_version() {
     echo "latest"
 }
 
-# Download from Bitbucket
-download_from_bitbucket() {
+# Download from GitHub Releases
+download_from_github() {
     local platform="$1"
     local version="$2"
-    
-    log_info "Attempting to download from Bitbucket Downloads..."
+
+    log_info "Attempting to download from GitHub Releases..."
     log_info "Platform: $platform, Version: $version"
-    
-    local base_url="https://bitbucket.org/lexmata/go-mupdf/downloads"
+
+    local base_url="https://github.com/Lexmata/go-mupdf/releases/download/v${version}"
     local filename="go-mupdf-${version}-${platform}.tar.gz"
     local url="${base_url}/${filename}"
     
@@ -160,7 +160,7 @@ download_from_bitbucket() {
     
     if check_existing_libs; then
         write_platform_marker
-        log_success "Installed from Bitbucket Downloads"
+        log_success "Installed from GitHub Releases"
         return 0
     fi
     
@@ -396,8 +396,8 @@ main() {
     if [ $success -eq 0 ] && [ "$SKIP_DOWNLOAD" != "1" ]; then
         local version=$(get_version)
         
-        log_info "No local artifacts found, trying Bitbucket Downloads..."
-        if download_from_bitbucket "$platform" "$version"; then
+        log_info "No local artifacts found, trying GitHub Releases..."
+        if download_from_github "$platform" "$version"; then
             success=1
         fi
     fi
@@ -434,7 +434,7 @@ Usage: $0 [OPTIONS]
 Options:
     --artifact-dir DIR     Directory containing pre-built artifacts (default: mupdf-artifacts)
     --dist-file FILE       Install from a specific distribution tarball
-    --skip-download        Skip downloading from Bitbucket Downloads
+    --skip-download        Skip downloading from GitHub Releases
     --force-build          Skip artifacts and build from source
     --help                 Show this help message
 
@@ -453,7 +453,7 @@ Examples:
 This script attempts to install MuPDF libraries in the following order:
 1. From artifact directory (ARTIFACT_DIR or --artifact-dir)
 2. From distribution tarball (DIST_FILE or --dist-file)
-3. Download from Bitbucket Downloads (unless --skip-download)
+3. Download from GitHub Releases (unless --skip-download)
 4. Build from source as fallback
 
 EOF

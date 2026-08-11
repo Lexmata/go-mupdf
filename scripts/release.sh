@@ -270,7 +270,7 @@ push_release() {
     git push origin "$tag_name"
     
     log_success "Release $tag_name pushed to repository"
-    log_info "Bitbucket Pipeline will automatically build and publish release artifacts"
+    log_info "GitHub Actions will automatically build and publish release artifacts"
 }
 
 # Function to generate release summary
@@ -291,11 +291,11 @@ generate_release_summary() {
 ✅ Pipeline: Will trigger automatically
 
 📦 What happens next:
-1. Bitbucket Pipeline will detect the new tag
+1. GitHub Actions will detect the new tag
 2. Comprehensive test suite will run
 3. Binary artifacts will be built
 4. Release notes will be generated
-5. Artifacts will be uploaded to Downloads section
+5. Artifacts will be published as GitHub Release assets
 
 📋 Manual steps (if needed):
 1. Review the pipeline execution at:
