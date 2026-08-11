@@ -90,7 +90,8 @@ build_mupdf() {
     fi
 
     # When cross-compiling, a cross compiler must be provided via $CC
-    local host_arch=$(uname -m)
+    local host_arch
+    host_arch=$(uname -m)
     case "$host_arch" in
         x86_64) host_arch="amd64" ;;
         aarch64) host_arch="arm64" ;;
@@ -116,7 +117,8 @@ build_mupdf() {
 
     # Build MuPDF with all dependencies statically linked
     log_info "Compiling MuPDF (this may take several minutes)..."
-    local nproc_count=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+    local nproc_count
+    nproc_count=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
     make -j"$nproc_count" \
         USE_SYSTEM_LIBS=no \
@@ -278,7 +280,8 @@ EOF
     log_success "Distribution package created: $DIST_DIR/${dist_name}.tar.gz"
 
     # Print package info
-    local size=$(du -h "$DIST_DIR/${dist_name}.tar.gz" | cut -f1)
+    local size
+    size=$(du -h "$DIST_DIR/${dist_name}.tar.gz" | cut -f1)
     log_info "Package size: $size"
     log_info "SHA256: $(cat "$DIST_DIR/${dist_name}.tar.gz.sha256")"
 }
@@ -300,8 +303,9 @@ verify_libraries() {
     fi
 
     # Check library sizes
-    local mupdf_size=$(du -h "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" | cut -f1)
-    local third_size=$(du -h "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a" | cut -f1)
+    local mupdf_size third_size
+    mupdf_size=$(du -h "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" | cut -f1)
+    third_size=$(du -h "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a" | cut -f1)
 
     log_info "libmupdf.a size: $mupdf_size"
     log_info "libmupdf-third.a size: $third_size"
@@ -328,19 +332,52 @@ verify_libraries() {
         esac
 
         if [ -n "$expected_machine" ]; then
+            # Scan EVERY object member, not just the first. MuPDF embeds font and
+            # resource blobs (*.otf.o, *.cff.o, *.zip.o) as binary objects wrapped
+            # by ld/objcopy. Under a broken cross-compile those wrap with the host
+            # toolchain (x86-64) while the compiled C is aarch64, producing a
+            # mixed-arch archive that links fine on the build host but fails on the
+            # target with "incompatible with <arch> output". Checking only the first
+            # member (a compiled C object) misses this entirely — it is exactly how
+            # the corrupt v1.9.2 linux-arm64 artifact passed verification. Fail on
+            # ANY member whose machine differs from the target.
+            # readelf must read a real file — `readelf -h /dev/stdin` on piped
+            # `ar p` output yields no header here, which silently reduced the
+            # scan to zero checked members (the "PASS" that verified nothing).
+            # Extract each member to a temp file and read that instead.
+            # A RETURN trap would not fire here: the failure paths below call
+            # `exit`, and RETURN traps only run on a normal function return.
+            # Remove the temp file explicitly at every exit instead.
+            local tmp_member
+            tmp_member=$(mktemp)
             local lib
             for lib in "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf.a" "$MUPDF_DIR/build/$BUILD_TYPE/libmupdf-third.a"; do
-                local member=$(ar t "$lib" 2>/dev/null | head -1)
-                local machine=$(ar p "$lib" "$member" 2>/dev/null | readelf -h /dev/stdin 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}')
-                if [ -z "$machine" ]; then
-                    log_warn "Could not determine architecture of $(basename "$lib")"
-                elif [ "$machine" != "$expected_machine" ]; then
-                    log_error "$(basename "$lib") is built for '$machine' but target $platform expects '$expected_machine'"
+                local total=0 checked=0 bad=0 member machine
+                while IFS= read -r member; do
+                    case "$member" in *.o) ;; *) continue ;; esac
+                    total=$((total + 1))
+                    ar p "$lib" "$member" > "$tmp_member" 2>/dev/null || continue
+                    machine=$(readelf -h "$tmp_member" 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}')
+                    [ -z "$machine" ] && continue
+                    checked=$((checked + 1))
+                    if [ "$machine" != "$expected_machine" ]; then
+                        bad=$((bad + 1))
+                        [ "$bad" -le 5 ] && log_error "$(basename "$lib"): member '$member' is '$machine', target $platform expects '$expected_machine'"
+                    fi
+                done < <(ar t "$lib" 2>/dev/null)
+                if [ "$bad" -gt 0 ]; then
+                    rm -f "$tmp_member"
+                    log_error "$(basename "$lib") has $bad/$checked object members with the wrong architecture (target $platform)"
                     exit 1
-                else
-                    log_info "$(basename "$lib") architecture verified: $machine"
                 fi
+                if [ "$checked" -eq 0 ]; then
+                    rm -f "$tmp_member"
+                    log_error "Could not determine the architecture of any of $total object members in $(basename "$lib"); refusing to certify an unverifiable archive"
+                    exit 1
+                fi
+                log_success "$(basename "$lib") architecture verified: all $checked/$total object members are $expected_machine"
             done
+            rm -f "$tmp_member"
         else
             log_warn "No known ELF machine mapping for architecture '$target_arch', skipping architecture check"
         fi

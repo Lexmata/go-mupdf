@@ -15,7 +15,8 @@ detect_target_os() {
     fi
     
     # Otherwise detect from uname
-    local os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    local os
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
     case "$os" in
         linux*)   echo "linux" ;;
         darwin*)  echo "darwin" ;;
@@ -38,7 +39,8 @@ detect_target_arch() {
     fi
     
     # Otherwise detect from uname
-    local arch=$(uname -m)
+    local arch
+    arch=$(uname -m)
     case "$arch" in
         x86_64|amd64)     echo "amd64" ;;
         aarch64|arm64)    echo "arm64" ;;
@@ -71,27 +73,14 @@ if [ -f "${BUILD_DIR}/libmupdf.a" ] && [ -f "${BUILD_DIR}/libmupdf-third.a" ] &&
         echo "⚠ Existing libraries are for ${EXISTING_PLATFORM}, need ${PLATFORM} — reinstalling"
         rm -f "${BUILD_DIR}/libmupdf.a" "${BUILD_DIR}/libmupdf-third.a" "${PLATFORM_MARKER}"
     else
-        # Legacy install without a platform marker: inspect the archive itself
-        case "${TARGET_ARCH}" in
-            amd64) EXPECTED_MACHINE="Advanced Micro Devices X86-64" ;;
-            arm64) EXPECTED_MACHINE="AArch64" ;;
-            *)     EXPECTED_MACHINE="" ;;
-        esac
-        MACHINE=""
-        if [ "${TARGET_OS}" = "linux" ] && [ -n "${EXPECTED_MACHINE}" ] && command -v readelf >/dev/null 2>&1; then
-            MEMBER=$(ar t "${BUILD_DIR}/libmupdf.a" 2>/dev/null | head -1 || true)
-            MACHINE=$(ar p "${BUILD_DIR}/libmupdf.a" "${MEMBER}" 2>/dev/null | readelf -h /dev/stdin 2>/dev/null | awk -F: '/Machine/ {gsub(/^ +/,"",$2); print $2}' || true)
-        fi
-        if [ -n "${MACHINE}" ] && [ "${MACHINE}" != "${EXPECTED_MACHINE}" ]; then
-            echo "⚠ Existing libraries are for ${MACHINE}, need ${EXPECTED_MACHINE} (${PLATFORM}) — reinstalling"
-            rm -f "${BUILD_DIR}/libmupdf.a" "${BUILD_DIR}/libmupdf-third.a"
-        else
-            if [ -z "${MACHINE}" ]; then
-                echo "⚠ No platform marker found and architecture could not be verified; assuming libraries match ${PLATFORM}"
-            fi
-            echo "✓ MuPDF libraries already present at ${THIRD_PARTY}"
-            exit 0
-        fi
+        # Legacy install without a platform marker: we cannot trust the arch of
+        # what's on disk. The old check sniffed a single archive member and
+        # assumed a match when readelf couldn't read it — exactly the blind spot
+        # that let a mixed-arch archive install cleanly. Rather than re-derive a
+        # trustworthy arch from an untagged install, treat it as stale and
+        # reinstall; a fresh download always writes the marker below.
+        echo "⚠ Existing libraries have no platform marker; reinstalling to guarantee ${PLATFORM}"
+        rm -f "${BUILD_DIR}/libmupdf.a" "${BUILD_DIR}/libmupdf-third.a"
     fi
 fi
 
@@ -102,7 +91,14 @@ else
     VERSION=$(git -C "${PROJECT_ROOT}" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "1.3.2")
 fi
 
-DOWNLOAD_URL="https://bitbucket.org/lexmata/go-mupdf/downloads/go-mupdf-${VERSION}-${PLATFORM}.tar.gz"
+# Artifacts are published as GitHub Release assets on the Lexmata mirror, which
+# is public — so an asset downloads from its stable release-download URL with a
+# plain unauthenticated GET, no token and no API/JSON lookup required. Override
+# the repo with GO_MUPDF_GH_REPO if the mirror ever moves.
+GH_REPO="${GO_MUPDF_GH_REPO:-Lexmata/go-mupdf}"
+ASSET="go-mupdf-${VERSION}-${PLATFORM}.tar.gz"
+TAG="v${VERSION}"
+DOWNLOAD_URL="https://github.com/${GH_REPO}/releases/download/${TAG}/${ASSET}"
 
 echo "========================================"
 echo "Downloading pre-built MuPDF libraries"
@@ -116,27 +112,42 @@ echo "========================================"
 
 # Create temporary directory for download
 TEMP_DIR=$(mktemp -d)
-trap "rm -rf ${TEMP_DIR}" EXIT
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 
 cd "${TEMP_DIR}"
 
-# Download with curl or wget
-if command -v curl >/dev/null 2>&1; then
-    if ! curl -f -L -o "mupdf-libs.tar.gz" "${DOWNLOAD_URL}"; then
-        echo "⚠ Download failed. Pre-built libraries not available for ${PLATFORM}."
-        echo "   Falling back to source build..."
-        exit 1
-    fi
-elif command -v wget >/dev/null 2>&1; then
-    if ! wget -O "mupdf-libs.tar.gz" "${DOWNLOAD_URL}"; then
-        echo "⚠ Download failed. Pre-built libraries not available for ${PLATFORM}."
-        echo "   Falling back to source build..."
-        exit 1
-    fi
-else
-    echo "Error: Neither curl nor wget found. Please install one of them."
+download_failed() {
+    echo "⚠ Download failed: $1"
+    echo "   Pre-built libraries not available for ${PLATFORM} at ${GH_REPO}@${TAG}."
+    echo "   Falling back to source build..."
     exit 1
+}
+
+fetch() {  # $1 = url, $2 = output path
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$2" "$1"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$2" "$1"
+    else
+        echo "Error: neither curl nor wget found. Please install one of them." >&2
+        exit 1
+    fi
+}
+
+fetch "${DOWNLOAD_URL}" "mupdf-libs.tar.gz" \
+    || download_failed "could not download ${ASSET}"
+fetch "${DOWNLOAD_URL}.sha256" "mupdf-libs.tar.gz.sha256" \
+    || download_failed "could not download ${ASSET}.sha256"
+
+# Verify the download against its published checksum before trusting it. Compare
+# the hash fields directly rather than `sha256sum -c`, since the .sha256 names
+# the original tarball (go-mupdf-<ver>-<platform>.tar.gz), not our local name.
+EXPECTED_SHA=$(awk '{print $1}' "mupdf-libs.tar.gz.sha256" 2>/dev/null)
+ACTUAL_SHA=$(sha256sum "mupdf-libs.tar.gz" | awk '{print $1}')
+if [ -z "${EXPECTED_SHA}" ] || [ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]; then
+    download_failed "checksum mismatch (expected ${EXPECTED_SHA:-none}, got ${ACTUAL_SHA})"
 fi
+echo "✓ Checksum verified: ${ACTUAL_SHA}"
 
 # Extract
 echo "Extracting libraries..."
