@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"bitbucket.org/lexmata/go-mupdf/pkg/mupdf"
+	"github.com/Lexmata/go-mupdf/pkg/mupdf"
 )
 
 func main() {

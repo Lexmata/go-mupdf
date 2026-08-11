@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"bitbucket.org/lexmata/go-mupdf/pkg/mupdf"
+	"github.com/Lexmata/go-mupdf/pkg/mupdf"
 )
 
 func ExampleGetVersion() {

@@ -1,4 +1,4 @@
-module bitbucket.org/lexmata/go-mupdf
+module github.com/Lexmata/go-mupdf
 
 go 1.24.0
 
