@@ -190,15 +190,15 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
+	defer func() { _ = os.Remove(tempFile.Name()) }()
+	defer func() { _ = tempFile.Close() }()
 
 	// Write invalid content
 	_, err = tempFile.WriteString("This is not a PDF file")
 	if err != nil {
 		t.Fatalf("Failed to write to temp file: %v", err)
 	}
-	tempFile.Close()
+	_ = tempFile.Close()
 
 	// Try to open the invalid file
 	_, err = OpenDocument(ctx, tempFile.Name())

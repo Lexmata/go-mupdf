@@ -384,7 +384,7 @@ func TestResourceLeakCheck(t *testing.T) {
 		_ = text.String()
 
 		// Delete the file to avoid filling the disk
-		os.Remove(pdfPath)
+		_ = os.Remove(pdfPath)
 	}
 
 	// Warm-up iteration: let one-time allocations (lazy initialization,

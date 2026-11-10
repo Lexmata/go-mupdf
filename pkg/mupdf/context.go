@@ -35,7 +35,8 @@ fz_context* go_mupdf_new_context(char **out_error) {
         fz_register_document_handlers(ctx);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
         fz_drop_context(ctx);

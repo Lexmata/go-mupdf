@@ -287,7 +287,7 @@ func errorHandlingAndRecovery(t *testing.T, ctx *Context, dir string) {
 	if err != nil {
 		t.Fatalf("Failed to write invalid PDF content: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Try to open the invalid file
 	_, err = OpenDocument(ctx, invalidPdfPath)

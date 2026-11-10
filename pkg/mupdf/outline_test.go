@@ -1,9 +1,11 @@
 package mupdf
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -250,6 +252,170 @@ func TestCountItems(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := countItems(tc.items); got != tc.want {
 				t.Errorf("countItems = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRemoveBookmarks(t *testing.T) {
+	ctx, err := NewContext()
+	if err != nil {
+		t.Skipf("mupdf unavailable: %v", err)
+	}
+	defer ctx.Drop()
+
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "plain.pdf")
+	marked := filepath.Join(dir, "marked.pdf")
+	out := filepath.Join(dir, "out.pdf")
+	buildTestPDF(t, ctx, plain, 4)
+	items := []OutlineItem{
+		{Title: "Part One", Page: 0, Children: []OutlineItem{
+			{Title: "Chapter 1", Page: 1},
+			{Title: "Chapter 2", Page: 2},
+		}},
+		{Title: "Part Two", Page: 3},
+	}
+	if err := AddBookmarks(ctx, plain, marked, items); err != nil {
+		t.Fatalf("AddBookmarks: %v", err)
+	}
+
+	if err := RemoveBookmarks(ctx, marked, out); err != nil {
+		t.Fatalf("RemoveBookmarks: %v", err)
+	}
+
+	got, err := ExtractBookmarks(ctx, out)
+	if err != nil {
+		t.Fatalf("ExtractBookmarks: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("bookmarks survived:\n%s", dumpOutline(got, 0))
+	}
+	if n, err := PageCount(ctx, out); err != nil || n != 4 {
+		t.Errorf("output has %d pages (err %v), want 4", n, err)
+	}
+
+	// The outline items themselves are gone from the file, not just
+	// unlinked from the catalog.
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Part One", "Chapter 1", "Part Two"} {
+		if bytes.Contains(data, []byte(title)) {
+			t.Errorf("outline item %q is still stored in the output", title)
+		}
+	}
+	if bytes.Contains(data, []byte("/Outlines")) {
+		t.Error("the catalog still refers to /Outlines")
+	}
+
+	// New bookmarks can be added to the stripped file: the remove-then-add
+	// sequence callers use to replace an outline.
+	replaced := filepath.Join(dir, "replaced.pdf")
+	fresh := []OutlineItem{{Title: "Only", Page: 2}}
+	if err := AddBookmarks(ctx, out, replaced, fresh); err != nil {
+		t.Fatalf("AddBookmarks after RemoveBookmarks: %v", err)
+	}
+	got, err = ExtractBookmarks(ctx, replaced)
+	if err != nil {
+		t.Fatalf("ExtractBookmarks: %v", err)
+	}
+	if !outlineEqual(got, fresh) {
+		t.Errorf("replacement outline is wrong:\n%s", dumpOutline(got, 0))
+	}
+}
+
+func TestRemoveBookmarks_NoOutline(t *testing.T) {
+	ctx, err := NewContext()
+	if err != nil {
+		t.Skipf("mupdf unavailable: %v", err)
+	}
+	defer ctx.Drop()
+
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.pdf")
+	out := filepath.Join(dir, "out.pdf")
+	buildTestPDF(t, ctx, in, 2)
+
+	if err := RemoveBookmarks(ctx, in, out); err != nil {
+		t.Fatalf("RemoveBookmarks on a PDF without bookmarks: %v", err)
+	}
+	if n, err := PageCount(ctx, out); err != nil || n != 2 {
+		t.Errorf("output has %d pages (err %v), want 2", n, err)
+	}
+}
+
+func TestRemoveBookmarks_Errors(t *testing.T) {
+	ctx, err := NewContext()
+	if err != nil {
+		t.Skipf("mupdf unavailable: %v", err)
+	}
+	defer ctx.Drop()
+
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.pdf")
+	buildTestPDF(t, ctx, in, 1)
+	out := filepath.Join(dir, "out.pdf")
+
+	tests := []struct {
+		name    string
+		in, out string
+		wantErr string
+	}{
+		{"output equals input", in, in, "must differ"},
+		{"empty input", "", out, "must not be empty"},
+		{"empty output", in, "", "must not be empty"},
+		{"missing input", filepath.Join(dir, "missing.pdf"), out, "cannot open"},
+		{"unwritable output", in, filepath.Join(dir, "no-such-dir", "out.pdf"), "RemoveBookmarks"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := RemoveBookmarks(ctx, tt.in, tt.out)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("want an error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+
+	if n, err := PageCount(ctx, in); err != nil || n != 1 {
+		t.Errorf("input damaged: %d pages, err %v", n, err)
+	}
+	assertNoStrayFiles(t, dir, "in.pdf")
+}
+
+// A document set to open with the bookmarks panel showing must not open
+// showing an empty one.
+func TestRemoveBookmarks_ClearsUseOutlinesPageMode(t *testing.T) {
+	ctx := newTestContext(t)
+	for mode, wantKept := range map[string]bool{"UseOutlines": false, "UseThumbs": true} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			in := filepath.Join(dir, "in.pdf")
+			out := filepath.Join(dir, "out.pdf")
+			writeRawPDF(t, in, []string{
+				"<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R /PageMode /" + mode + " >>",
+				"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+				"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+				"<< /Type /Outlines /First 5 0 R /Last 5 0 R /Count 1 >>",
+				"<< /Title (Only) /Parent 4 0 R /Dest [3 0 R /Fit] >>",
+			})
+
+			if err := RemoveBookmarks(ctx, in, out); err != nil {
+				t.Fatalf("RemoveBookmarks: %v", err)
+			}
+			data, err := os.ReadFile(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(data, []byte("/Outlines")) && !bytes.Contains(data, []byte("/UseOutlines")) {
+				t.Error("the catalog still refers to /Outlines")
+			}
+			if kept := bytes.Contains(data, []byte("/PageMode")); kept != wantKept {
+				t.Errorf("/PageMode kept = %v, want %v", kept, wantKept)
+			}
+			if bytes.Contains(data, []byte("/UseOutlines")) {
+				t.Error("/PageMode /UseOutlines survived the removal of the outline")
 			}
 		})
 	}

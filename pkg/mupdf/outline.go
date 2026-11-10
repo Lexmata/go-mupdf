@@ -1,123 +1,8 @@
 package mupdf
 
 /*
-#include <mupdf/fitz.h>
-#include <mupdf/pdf.h>
 #include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-
-// mupdf uses setjmp/longjmp for error handling. Any mupdf function that
-// can throw MUST be called inside fz_try/fz_catch or the process aborts.
-// CGo cannot use fz_try macros directly, so we wrap the operations in C.
-
-// Insert a single item at the current iterator position.
-static int safe_insert_item(fz_context *ctx, fz_outline_iterator *iter,
-	const char *title, const char *uri, int is_open)
-{
-	int ret = -1;
-	fz_outline_item item = {0};
-	item.title = (char *)title;
-	item.uri = (char *)uri;
-	item.is_open = is_open;
-
-	fz_try(ctx)
-		ret = fz_outline_iterator_insert(ctx, iter, &item);
-	fz_catch(ctx)
-		ret = -1;
-
-	return ret;
-}
-
-static int safe_iter_next(fz_context *ctx, fz_outline_iterator *iter)
-{
-	int ret = -1;
-	fz_try(ctx)
-		ret = fz_outline_iterator_next(ctx, iter);
-	fz_catch(ctx)
-		ret = -1;
-	return ret;
-}
-
-static int safe_iter_down(fz_context *ctx, fz_outline_iterator *iter)
-{
-	int ret = -1;
-	fz_try(ctx)
-		ret = fz_outline_iterator_down(ctx, iter);
-	fz_catch(ctx)
-		ret = -1;
-	return ret;
-}
-
-static int safe_iter_up(fz_context *ctx, fz_outline_iterator *iter)
-{
-	int ret = -1;
-	fz_try(ctx)
-		ret = fz_outline_iterator_up(ctx, iter);
-	fz_catch(ctx)
-		ret = -1;
-	return ret;
-}
-
-static int safe_iter_prev(fz_context *ctx, fz_outline_iterator *iter)
-{
-	int ret = -1;
-	fz_try(ctx)
-		ret = fz_outline_iterator_prev(ctx, iter);
-	fz_catch(ctx)
-		ret = -1;
-	return ret;
-}
-
-static int safe_iter_delete(fz_context *ctx, fz_outline_iterator *iter)
-{
-	int ret = -1;
-	fz_try(ctx)
-		ret = fz_outline_iterator_delete(ctx, iter);
-	fz_catch(ctx)
-		ret = -1;
-	return ret;
-}
-
-// Open a PDF, get its outline iterator, or return NULL on error.
-static pdf_document *safe_pdf_open(fz_context *ctx, const char *path)
-{
-	pdf_document *doc = NULL;
-	fz_try(ctx)
-		doc = pdf_open_document(ctx, path);
-	fz_catch(ctx)
-		doc = NULL;
-	return doc;
-}
-
-static fz_outline_iterator *safe_pdf_outline_iter(fz_context *ctx, pdf_document *doc)
-{
-	fz_outline_iterator *iter = NULL;
-	fz_try(ctx)
-		iter = pdf_new_outline_iterator(ctx, doc);
-	fz_catch(ctx)
-		iter = NULL;
-	return iter;
-}
-
-static int safe_pdf_save(fz_context *ctx, pdf_document *doc, const char *path)
-{
-	int ret = 0;
-	pdf_write_options opts = {0};
-	fz_try(ctx)
-		pdf_save_document(ctx, doc, path, &opts);
-	fz_catch(ctx)
-		ret = -1;
-	return ret;
-}
-
-static void safe_pdf_drop(fz_context *ctx, pdf_document *doc)
-{
-	fz_try(ctx)
-		pdf_drop_document(ctx, doc);
-	fz_catch(ctx)
-		;
-}
+#include "ops.h"
 */
 import "C"
 
@@ -147,17 +32,17 @@ func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineIte
 	cOutput := C.CString(outputPath)
 	defer C.free(unsafe.Pointer(cOutput))
 
-	doc := C.safe_pdf_open(ctx.ctx, cInput)
+	doc := C.gomupdf_outline_open_pdf(ctx.ctx, cInput)
 	if doc == nil {
 		return fmt.Errorf("go-mupdf: failed to open PDF: %s", inputPath)
 	}
-	defer C.safe_pdf_drop(ctx.ctx, doc)
+	defer C.gomupdf_outline_drop_pdf(ctx.ctx, doc)
 
 	// Clear existing outlines
-	iter := C.safe_pdf_outline_iter(ctx.ctx, doc)
+	iter := C.gomupdf_outline_iterator(ctx.ctx, doc)
 	if iter != nil {
 		for {
-			ret := C.safe_iter_delete(ctx.ctx, iter)
+			ret := C.gomupdf_outline_delete(ctx.ctx, iter)
 			if ret < 0 {
 				break
 			}
@@ -166,7 +51,7 @@ func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineIte
 	}
 
 	// Get fresh iterator and insert our items
-	iter = C.safe_pdf_outline_iter(ctx.ctx, doc)
+	iter = C.gomupdf_outline_iterator(ctx.ctx, doc)
 	if iter == nil {
 		return fmt.Errorf("go-mupdf: failed to create outline iterator")
 	}
@@ -181,7 +66,7 @@ func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineIte
 		return fmt.Errorf("go-mupdf: AddBookmarks: only %d of %d outline items inserted; refusing to save partial outline", inserted, requested)
 	}
 
-	if C.safe_pdf_save(ctx.ctx, doc, cOutput) != 0 {
+	if C.gomupdf_outline_save_pdf(ctx.ctx, doc, cOutput) != 0 {
 		return fmt.Errorf("go-mupdf: failed to save PDF: %s", outputPath)
 	}
 
@@ -219,7 +104,7 @@ func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []
 			isOpen = 1
 		}
 
-		insertRet := C.safe_insert_item(ctx, iter, cTitle, cURI, isOpen)
+		insertRet := C.gomupdf_outline_insert(ctx, iter, cTitle, cURI, isOpen)
 
 		C.free(unsafe.Pointer(cTitle))
 		C.free(unsafe.Pointer(cURI))
@@ -237,17 +122,17 @@ func insertOutlineItems(ctx *C.fz_context, iter *C.fz_outline_iterator, items []
 			// Step back to the item we just inserted, descend into it,
 			// recurse to write its children, then ascend and advance past
 			// the parent so the next sibling lands in the right slot.
-			if C.safe_iter_prev(ctx, iter) >= 0 {
-				if C.safe_iter_down(ctx, iter) >= 0 {
+			if C.gomupdf_outline_prev(ctx, iter) >= 0 {
+				if C.gomupdf_outline_down(ctx, iter) >= 0 {
 					ci, cr := insertOutlineItems(ctx, iter, item.Children)
 					inserted += ci
 					requested += cr
-					C.safe_iter_up(ctx, iter)
+					C.gomupdf_outline_up(ctx, iter)
 				} else {
 					// Could not descend: children are requested but unreachable.
 					requested += countItems(item.Children)
 				}
-				C.safe_iter_next(ctx, iter)
+				C.gomupdf_outline_next(ctx, iter)
 			} else {
 				// Could not step back onto the inserted item: same as above.
 				requested += countItems(item.Children)
@@ -265,4 +150,16 @@ func countItems(items []OutlineItem) int {
 		n += countItems(item.Children)
 	}
 	return n
+}
+
+// RemoveBookmarks writes a copy of a PDF with its outline (bookmarks)
+// removed. A PDF that has no outline is copied through unchanged in content.
+// A /PageMode of /UseOutlines is removed with it, so viewers do not open the
+// copy showing an empty bookmarks panel. It is the equivalent of
+// `cpdf -remove-bookmarks`.
+//
+// outputPath must not name the input file, and the output appears there
+// only if the whole operation succeeds.
+func RemoveBookmarks(ctx *Context, inputPath, outputPath string) error {
+	return opRemoveBookmarks(ctx, inputPath, outputPath)
 }

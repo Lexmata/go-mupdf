@@ -38,7 +38,7 @@ func TestPDFWriterSaveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "roundtrip.pdf")
 

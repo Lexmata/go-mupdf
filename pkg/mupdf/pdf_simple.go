@@ -102,7 +102,8 @@ pdf_page* go_mupdf_simple_add_page(fz_context *ctx, pdf_document *doc, float wid
         fz_drop_buffer(ctx, contents);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }

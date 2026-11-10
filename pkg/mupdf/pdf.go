@@ -24,7 +24,8 @@ pdf_document* go_mupdf_pdf_document_from_fz_document(fz_context *ctx, fz_documen
         pdf = fz_new_pdf_document_from_fz_document(ctx, doc);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -40,7 +41,8 @@ void go_mupdf_pdf_drop_document(fz_context *ctx, pdf_document *doc, char **out_e
         pdf_drop_document(ctx, doc);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -55,7 +57,8 @@ int go_mupdf_pdf_count_pages(fz_context *ctx, pdf_document *doc, char **out_erro
         count = pdf_count_pages(ctx, doc);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -72,7 +75,8 @@ pdf_page* go_mupdf_pdf_load_page(fz_context *ctx, pdf_document *doc, int page_nu
         page = pdf_load_page(ctx, doc, page_number);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -117,7 +121,8 @@ fz_rect go_mupdf_pdf_bound_page(fz_context *ctx, pdf_page *page, char **out_erro
         }
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -149,7 +154,8 @@ pdf_document* go_mupdf_pdf_create_document(fz_context *ctx, char **out_error) {
         }
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -200,7 +206,8 @@ pdf_page* go_mupdf_pdf_add_page(fz_context *ctx, pdf_document *doc, float width,
         fz_drop_buffer(ctx, contents);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -216,7 +223,8 @@ void go_mupdf_pdf_save_document(fz_context *ctx, pdf_document *doc, const char *
         pdf_save_document(ctx, doc, filename, NULL);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -231,7 +239,8 @@ pdf_obj* go_mupdf_pdf_new_null(fz_context *ctx, pdf_document *doc, char **out_er
         obj = PDF_NULL;
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -248,7 +257,8 @@ pdf_obj* go_mupdf_pdf_new_bool(fz_context *ctx, pdf_document *doc, int b, char *
         obj = b ? PDF_TRUE : PDF_FALSE;
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -265,7 +275,8 @@ pdf_obj* go_mupdf_pdf_new_int(fz_context *ctx, pdf_document *doc, int i, char **
         obj = pdf_new_int(ctx, i);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -282,7 +293,8 @@ pdf_obj* go_mupdf_pdf_new_real(fz_context *ctx, pdf_document *doc, float f, char
         obj = pdf_new_real(ctx, f);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -299,7 +311,8 @@ pdf_obj* go_mupdf_pdf_new_string(fz_context *ctx, pdf_document *doc, const char 
         obj = pdf_new_string(ctx, s, len);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }

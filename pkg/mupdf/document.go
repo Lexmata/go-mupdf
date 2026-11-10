@@ -20,7 +20,8 @@ fz_document* go_mupdf_open_document(fz_context *ctx, const char *filename, char 
         doc = fz_open_document(ctx, filename);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -37,7 +38,8 @@ int go_mupdf_count_pages(fz_context *ctx, fz_document *doc, char **out_error) {
         count = fz_count_pages(ctx, doc);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
         return -1;

@@ -23,13 +23,29 @@ jobs:
         with:
           submodules: recursive
 
+      # CI builds with the current toolchain, not the minimum in go.mod.
+      # go.mod's `go` line is the oldest Go a consumer may build with
+      # (lexmata-identification is on 1.26), so it stays where it is; raising
+      # it would force every consumer to upgrade. Keep this in step with
+      # GO_VERSION in Dockerfile and the image in Dockerfile.test.
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: "1.27.3"
           cache: true
 
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config unzip binutils
+
+      # The tools the test suite compares the MuPDF operations against
+      # (pdftoppm, qpdf, cpdf). GOMUPDF_REQUIRE_TOOLS makes a missing one fail
+      # those tests instead of skipping them, so the comparisons cannot
+      # silently stop running. cpdf is not packaged for Ubuntu; the script
+      # fetches a pinned, checksummed binary.
+      - name: Install comparison tools
+        run: |
+          sudo apt-get install -y poppler-utils qpdf
+          sudo ./scripts/install-cpdf.sh
+          echo "GOMUPDF_REQUIRE_TOOLS=1" >> "$GITHUB_ENV"
 
       # Build the MuPDF static libs into third_party/mupdf/build/release so the
       # cgo package links. --build-only skips distribution packaging.
@@ -52,11 +68,13 @@ jobs:
       - name: Test (race + coverage)
         run: go test -race -coverprofile=coverage.out ./pkg/...
 
-      # Pinned to the version the repo used before (known-good with this code
-      # and Go 1.24). Bump deliberately; a floating "latest" turns a new linter
-      # release into a surprise red build.
+      # Pinned to a release built for the Go version above: a linter older
+      # than the toolchain cannot read its export data and exits without
+      # checking anything. golangci-lint v2 needs action v7 or later. Bump
+      # deliberately; a floating "latest" turns a new linter release into a
+      # surprise red build.
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.64.8
+          version: v2.15.0
           args: ./pkg/...

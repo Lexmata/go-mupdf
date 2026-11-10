@@ -20,7 +20,8 @@ fz_stext_page* go_mupdf_extract_text(fz_context *ctx, fz_page *page, char **out_
         text = fz_new_stext_page_from_page(ctx, page, &opts);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -46,7 +47,8 @@ fz_buffer* go_mupdf_stext_page_to_buffer(fz_context *ctx, fz_stext_page *text,
         *out_len = fz_buffer_storage(ctx, buf, out_data);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
         if (buf) {

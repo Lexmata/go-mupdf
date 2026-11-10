@@ -32,7 +32,7 @@ func ExampleOpenDocument() {
 		fmt.Printf("Failed to create temp directory: %v\n", err)
 		return
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "example.pdf")
 
@@ -88,7 +88,7 @@ func ExampleDocument_LoadPage() {
 		fmt.Printf("Failed to create temp directory: %v\n", err)
 		return
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "example.pdf")
 
@@ -152,7 +152,7 @@ func ExamplePage_ExtractText() {
 		fmt.Printf("Failed to create temp directory: %v\n", err)
 		return
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "example.pdf")
 
@@ -228,7 +228,7 @@ func ExamplePDFWriter() {
 		fmt.Printf("Failed to create temp directory: %v\n", err)
 		return
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "example.pdf")
 

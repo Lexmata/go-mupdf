@@ -19,7 +19,7 @@ func BenchmarkPDFCreation(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	b.ResetTimer()
 
@@ -62,7 +62,7 @@ func BenchmarkPDFOpening(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "benchmark.pdf")
 
@@ -114,7 +114,7 @@ func BenchmarkPDFPageLoading(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "benchmark.pdf")
 
@@ -175,7 +175,7 @@ func BenchmarkTextExtraction(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	pdfPath := filepath.Join(dir, "benchmark.pdf")
 
