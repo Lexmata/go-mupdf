@@ -22,6 +22,7 @@ This document provides a comprehensive API reference for the Go MuPDF wrapper, c
   - [Context Functions](#context-functions)
   - [Document Functions](#document-functions)
   - [PDF Functions](#pdf-functions)
+  - [Rendering, Repair and Page Operations](#rendering-repair-and-page-operations)
 
 ---
 
@@ -612,6 +613,72 @@ fmt.Printf("Using MuPDF version: %s\n", version)
 ```
 
 ---
+
+### Rendering, Repair and Page Operations
+
+MuPDF-native replacements for the common `pdftoppm`, `qpdf` and `cpdf`
+invocations. Each function's doc comment in `pkg/mupdf` is the authoritative
+description; this is the summary.
+
+| Function | Replaces | What it does |
+|---|---|---|
+| `(*Document).RenderPage(pageNum, dpi, opts)` | `pdftoppm -png -r` | Rasterises a page to an opaque `*image.RGBA` covering the MediaBox, with `/Rotate` applied and content outside the CropBox drawn. `RenderPageContext` adds cancellation. |
+| `GetPageGeometry(ctx, path)` | `cpdf -page-info` | Returns each page's MediaBox (US Letter if missing or degenerate) and `/Rotate` snapped to 0, 90, 180 or 270. |
+| `CheckPDF(ctx, path)` | `qpdf --check` | Loads every object and measures every stream. Errors only if the file cannot be opened as a PDF; anything recoverable comes back with `Repaired` or `Warnings` set. `CheckPDFContext` adds cancellation. |
+| `RepairPDF(ctx, in, out, opts)` | `qpdf in out` | Rewrites a PDF with a fresh xref, dropping unreferenced objects. Options: `ObjectStreams`, `DeterministicID`. |
+| `OverlayPages(ctx, in, overlay, out, opts)` | `cpdf -combine-pages` | Draws overlay page *i* over input page *i* at the identity transform, as a form XObject, isolated from whatever state the input's content leaves behind. Page counts must match. |
+| `UprightPages(ctx, in, out, opts)` | `cpdf -upright` | Bakes `/Rotate` into content (patterns included); moves page boxes, annotations and explicit destinations with it. Returns the number of pages changed. |
+| `RemoveBookmarks(ctx, in, out)` | `cpdf -remove-bookmarks` | Strips the outline, and a `/PageMode` of `/UseOutlines`. |
+| `RepairCatalogDests(ctx, in, out)` | a `qpdf --update-from-json` patch | Moves a name tree wrongly stored in the catalog `/Dests` to `/Names /Dests`, merging if both exist. |
+| `CompressPDF(ctx, in, out)` | `cpdf -squeeze` | Lossless: garbage-collects, de-duplicates, deflates, and packs object streams. |
+
+Rules that apply to all the file-to-file functions:
+
+- The output path must not name an input file. MuPDF reads its input lazily
+  while it writes, so saving over it would corrupt it; the functions refuse.
+- The output is always written on success, including when nothing needed
+  changing, and only on success. It is written to a temporary file beside
+  the output path and renamed into place, so a failed call leaves no partial
+  file and leaves a file already at the output path untouched.
+- They take the `Context` lock for the duration of the call, so they are safe
+  to call from the goroutine that owns the `Context` and cannot run against a
+  dropped one.
+- A MuPDF failure is returned as an error wrapping `mupdf.Error`, prefixed
+  with `go-mupdf: <FunctionName>: `. MuPDF's own messages can contain file
+  paths; do not pass them on to end users verbatim.
+
+Limits for untrusted input (every options argument may be `nil` for the
+defaults; zero means the default and a negative value removes the limit):
+
+| Option | Default | Guards against |
+|---|---|---|
+| `RenderOptions.MaxPixels` | `DefaultMaxPixels`, 256 megapixels | A page whose declared size would need an image of many gigabytes. Checked before anything is allocated. |
+| `OverlayOptions.MaxContentBytes`, `UprightOptions.MaxContentBytes` | `DefaultMaxContentBytes`, 1 GiB | A small file that refers to one stream thousands of times, each reference becoming a decoded copy in the output. |
+| a `context.Context` passed to `RenderPageContext` or `CheckPDFContext` | none | Content crafted to be slow, which would otherwise hold the `Context` lock until it finished. |
+
+Known limits:
+
+- `RenderPage` and `pdftoppm` round fractional page sizes differently, so
+  image dimensions can differ by one pixel, and the two anti-alias edges
+  differently. `RenderPage` draws the MediaBox, which is not what
+  `Page.Bound` reports (the CropBox); use `GetPageGeometry` for its frame.
+- `CheckPDF` does not decode streams, so compressed data that is corrupt but
+  of the declared length is not detected, and in an encrypted file it cannot
+  compare stream lengths at all.
+- `UprightPages` moves a rotated page's content into a form XObject, so a
+  tagged PDF's structure tree no longer resolves marked content on that
+  page. `OverlayPages` does the same, but only to a page whose own content
+  is malformed. Pages that were already upright keep their MediaBox as it
+  was, including one that does not start at the origin.
+- A `/Rotate` that is not a multiple of 90 is snapped to the nearest right
+  angle, consistently by `GetPageGeometry`, `RenderPage` and `UprightPages`.
+- `OverlayPages` carries over the overlay's page content only, not its
+  annotations, bookmarks or document-level data, and does not reconcile the
+  two pages' `/Rotate`; make the input upright first if it is rotated.
+- `RepairOptions.DeterministicID` writes the MD5 of the input file as the
+  file identifier, which lets anyone holding the output confirm which input
+  it was made from.
+- Builds with `-tags system_mupdf` need MuPDF 1.24 or later.
 
 ## Usage Patterns
 

@@ -22,8 +22,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -72,7 +74,7 @@ func testDataDir(t *testing.T) string {
 	}
 
 	t.Cleanup(func() {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	})
 
 	return dir
@@ -384,4 +386,95 @@ func requireMuPDF(t *testing.T) {
 //	}
 func runGC() {
 	runtime.GC()
+}
+
+func writeFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func newTestContext(t *testing.T) *Context {
+	t.Helper()
+	ctx, err := NewContext()
+	if err != nil {
+		t.Skipf("mupdf unavailable: %v", err)
+	}
+	t.Cleanup(ctx.Drop)
+	return ctx
+}
+
+func openTestDocument(t *testing.T, ctx *Context, path string) *Document {
+	t.Helper()
+	doc, err := OpenDocument(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenDocument(%s): %v", path, err)
+	}
+	t.Cleanup(doc.Close)
+	return doc
+}
+
+// requireTool returns the path of an external tool a test compares against.
+// On a developer machine a missing tool skips the test. Where
+// GOMUPDF_REQUIRE_TOOLS is set, as CI sets it after installing them, a
+// missing tool fails the test: the comparisons against the tools this
+// package replaces are the only outside check on some operations, and a skip
+// would hide that they never ran.
+func requireTool(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		if os.Getenv("GOMUPDF_REQUIRE_TOOLS") != "" {
+			t.Fatalf("%s is not installed, and GOMUPDF_REQUIRE_TOOLS says the comparisons against it must run", name)
+		}
+		t.Skipf("%s not installed; skipping comparison", name)
+	}
+	return path
+}
+
+func runTool(t *testing.T, name string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+	}
+	return string(out)
+}
+
+func pageText(t *testing.T, ctx *Context, path string, page int) string {
+	t.Helper()
+	p, err := openTestDocument(t, ctx, path).LoadPage(page)
+	if err != nil {
+		t.Fatalf("LoadPage(%d): %v", page, err)
+	}
+	defer p.Close()
+	text, err := p.ExtractText()
+	if err != nil {
+		t.Fatalf("ExtractText(%d): %v", page, err)
+	}
+	defer text.Close()
+	return text.String()
+}
+
+// assertNoStrayFiles fails the test if dir holds anything other than the
+// named files: an operation that fails must leave neither a partial output
+// nor a temporary file behind.
+func assertNoStrayFiles(t *testing.T, dir string, allowed ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	for _, e := range entries {
+		ok := false
+		for _, name := range allowed {
+			if e.Name() == name {
+				ok = true
+			}
+		}
+		if !ok {
+			t.Errorf("stray file left behind: %s", e.Name())
+		}
+	}
 }

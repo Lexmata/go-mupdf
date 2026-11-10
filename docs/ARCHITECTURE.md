@@ -32,18 +32,69 @@ The Go MuPDF wrapper is designed as a safe, idiomatic Go interface to the MuPDF 
 
 ```
 pkg/mupdf/
-├── mupdf.go           # Package documentation and overview
-├── types.go           # Core types (Error, Rect)
-├── context.go         # MuPDF context management
-├── document.go        # Document operations
-├── page.go           # Page operations
-├── text.go           # Text extraction
-├── pdf.go            # PDF-specific functionality
-├── pdf_debug.go      # Debug utilities
-├── pdf_fix.go        # Fixed implementations
-├── pdf_simple.go     # Simplified implementations
-└── helpers_test.go   # Testing utilities (test-only)
+├── mupdf.go            # Package documentation and overview
+├── types.go            # Core types (Error, Rect)
+├── context.go          # MuPDF context management
+├── document.go         # Document operations
+├── page.go             # Page operations
+├── text.go             # Text extraction
+├── pdf.go              # PDF-specific functionality
+├── pdf_debug.go        # Debug utilities
+├── pdf_fix.go          # Fixed implementations
+├── pdf_simple.go       # Simplified implementations
+├── pdfcpu.go           # pdfcpu-backed operations (merge, split, encrypt, ...)
+├── reorder.go          # Page reordering, PageCount
+├── outline.go          # AddBookmarks, RemoveBookmarks
+├── extract_bookmarks.go# ExtractBookmarks
+│
+├── render.go           # RenderPage                       ┐
+├── geometry.go         # GetPageGeometry                  │ plain Go: the
+├── repair.go           # CheckPDF, RepairPDF              │ exported API and
+├── overlay.go          # OverlayPages                     │ its documentation
+├── upright.go          # UprightPages                     │
+├── catalog_dests.go    # RepairCatalogDests               │
+├── compress.go         # CompressPDF                      ┘
+├── ops.go              # all cgo for the files above
+├── ops.h               # C entry points called from ops.go
+├── ops_internal.h      # helpers shared between the C files
+├── ops_common.c        # errors, budgets, page boxes, name-tree walking
+├── ops_render.c        # ...and one C file per operation
+├── ops_geometry.c
+├── ops_check.c
+├── ops_save.c          # repair, compress, remove bookmarks
+├── ops_overlay.c
+├── ops_upright.c
+├── ops_dests.c
+├── ops_outline.c       # outline primitives for outline.go
+└── helpers_test.go     # Testing utilities (test-only)
 ```
+
+### Where C code goes
+
+MuPDF reports errors with `setjmp`/`longjmp`, so every call that can throw
+must sit inside `fz_try`/`fz_catch`, which cgo cannot express. The older
+files handle that with small C helpers written in each file's cgo preamble.
+New work follows the `ops` layout instead:
+
+- **C lives in `ops_*.c`**, one file per operation, declared in `ops.h`.
+  A real `.c` file is compiled with warnings, can share helpers through
+  `ops_internal.h`, and is readable as C rather than as a comment. cgo
+  compiles every `.c` file in the package directory, so adding one needs no
+  build change.
+- **Every entry point has the same shape**: it returns a status (or `NULL`)
+  and copies the MuPDF error message into a caller-supplied buffer with
+  `gomupdf_set_err`. That function uses `fz_convert_error`, which also marks
+  the error as handled; a caught error that is only read with
+  `fz_caught_message` is reported by MuPDF as unhandled.
+- **cgo lives in `ops.go`**, which has one small Go-typed function per C
+  entry point. The files holding the exported API do not import `"C"`.
+- **`runOp`** takes the `Context` lock and turns the error buffer into a Go
+  error wrapping `mupdf.Error`. **`runFileOp`** adds input/output path
+  checks and writes through a temporary file renamed into place on success.
+  **`withCancel`** connects a `context.Context` to an `fz_cookie`.
+- **C style**: braces on every `if`, `for` and `while` body; `fz_var` on
+  every variable assigned inside an `fz_try` and read after it; no `return`
+  inside `fz_try`.
 
 ### Dependency Graph
 

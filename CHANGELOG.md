@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Features
+MuPDF-native operations that let a service render, repair and stamp PDFs
+without shelling out to `pdftoppm`, `qpdf` or `cpdf`. (MPDF-138)
+
+- **render**: `Document.RenderPage(pageNum, dpi, opts)` rasterises a page to
+  an opaque `*image.RGBA`. For PDFs the image covers the MediaBox, not the
+  CropBox, and content outside the CropBox is drawn: the frame `pdftoppm`
+  uses by default. `RenderOptions.MaxPixels` (default 256 megapixels) refuses
+  a page whose declared size would need an enormous image.
+  `RenderPageContext` adds cancellation.
+- **geometry**: `GetPageGeometry` returns each page's MediaBox and its
+  `/Rotate` snapped to 0, 90, 180 or 270 the same way the renderer snaps it.
+- **repair**: `CheckPDF` reads a PDF's whole structure and reports whether
+  MuPDF had to repair it, along with the warnings raised on the way; an
+  object that cannot be loaded is a warning, not an error. `CheckPDFContext`
+  adds cancellation. `RepairPDF` rewrites a damaged PDF into a clean one,
+  with options to use object streams and to write a deterministic `/ID`.
+- **overlay**: `OverlayPages` draws page *i* of one PDF over page *i* of
+  another at the identity transform, as a form XObject, without touching the
+  destination page's boxes, rotation or shared resources. The destination's
+  content stays in place, wrapped to match any unmatched `q`/`Q` operators,
+  and the result is read back to confirm the overlay is drawn cleanly; a
+  page whose content would swallow the overlay (an open text object, open
+  marked content, an unterminated string or inline image) has that content
+  sealed in a form XObject instead.
+- **upright**: `UprightPages` bakes `/Rotate` into page content, moving the
+  page boxes and annotations with it, so every page ends at `/Rotate 0`.
+  Patterns and shadings turn with the page, NoRotate annotations stay
+  upright, shared appearance streams are copied rather than turned in place,
+  and destinations with explicit coordinates (links, bookmarks, named
+  destinations, the open action) are rewritten to follow the page.
+- **outline**: `RemoveBookmarks` strips a PDF's outline, and a `/PageMode` of
+  `/UseOutlines` with it.
+- **catalog**: `RepairCatalogDests` moves a named-destination name tree out
+  of the catalog's PDF 1.1 `/Dests` slot, where pdfcpu rejects it. When
+  `/Names /Dests` already exists the two are merged rather than one being
+  assumed a copy of the other.
+- **compress**: `CompressPDF` losslessly shrinks a PDF using MuPDF alone.
+
+All the file-to-file operations write to a temporary file beside the output
+and rename it into place on success, so a failure never leaves a partial
+file and never destroys a file already at the output path.
+`OverlayOptions.MaxContentBytes` and `UprightOptions.MaxContentBytes`
+(default 1 GiB) bound the decoded content copied into an output, which a
+hostile file can otherwise inflate by referring to one stream thousands of
+times.
+
+### 🐛 Bug Fixes
+- **pdfcpu**: `GetPDFInfo` never returned `title`, `author`, `subject`,
+  `creator`, `producer`, `keywords` or the dates: it passed pdfcpu a pointer
+  to the Info reference where a value was needed, which yields no dictionary
+  and no error. Found by a new test. (MPDF-138)
+
+### 🔧 Internal
+- C code for these operations lives in `pkg/mupdf/ops_*.c` behind `ops.h`,
+  the package's first standalone C sources, and all cgo for them is in
+  `ops.go`. The outline helpers used by `AddBookmarks` and `ExtractBookmarks`
+  moved there from cgo preambles. Every caught MuPDF error in the package is
+  now acknowledged with `fz_convert_error`.
+- CI builds and tests with Go 1.27.3 and lints with golangci-lint v2.15.0
+  (v1.64.8 could not analyse code built with the current toolchain). It
+  installs `pdftoppm`, `qpdf` and `cpdf` so the tests that compare against
+  them run instead of skipping. The `go` line in go.mod is unchanged: the
+  module still builds with Go 1.24, so consumers are not forced to upgrade.
+
+### ⚠️ Build requirements
+- Builds with `-tags system_mupdf` now need MuPDF 1.24 or later (for
+  `fz_convert_error`). The bundled library is 1.27.2, so default builds are
+  unaffected, and `ops.h` fails the build with a clear message otherwise.
+
+## [1.9.3] - 2026-08-11
+
+### 🐛 Bug Fixes
+- **release**: The linux-arm64 static-library artifact in 1.9.2 was a
+  mixed-architecture archive (aarch64 code, x86-64 font and resource blobs)
+  and failed to link on arm64. Release artifacts are now built natively per
+  architecture on GitHub Actions, the archive check scans every member, and
+  `download-libs.sh` fetches from GitHub Releases. (MPDF-117)
+
 ## [1.9.2] - 2026-08-10
 
 ### 🐛 Bug Fixes

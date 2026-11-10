@@ -576,7 +576,7 @@ func TestValidatePDF(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create empty file: %v", err)
 		}
-		f.Close()
+		_ = f.Close()
 
 		err = ValidatePDF(emptyPath, nil)
 		if err == nil {
@@ -592,10 +592,10 @@ func TestValidatePDF(t *testing.T) {
 			t.Fatalf("Failed to create corrupted file: %v", err)
 		}
 		if _, err := f.WriteString("This is not a valid PDF file"); err != nil {
-			f.Close()
+			_ = f.Close()
 			t.Fatalf("Failed to write corrupted content: %v", err)
 		}
-		f.Close()
+		_ = f.Close()
 
 		err = ValidatePDF(corruptedPath, nil)
 		if err == nil {
@@ -1391,4 +1391,39 @@ func TestPDFCPUIntegration(t *testing.T) {
 	}
 
 	t.Logf("Integration test completed. Final PDF info: %+v", info)
+}
+
+// GetPDFInfo reads the document information dictionary. It used to pass
+// pdfcpu a pointer where a value was needed and so returned none of these
+// fields for any file.
+func TestGetPDFInfo_ReadsInfoDictionary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "info.pdf")
+	data := rawPDFBytes([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+		"<< /Title (The Title) /Author (An Author) /Subject (A Subject) /Creator (A Creator) /Producer (A Producer) /Keywords (one two) >>",
+	})
+	data = bytes.Replace(data, []byte("/Root 1 0 R >>"), []byte("/Root 1 0 R /Info 4 0 R >>"), 1)
+	writeFile(t, path, data)
+
+	info, err := GetPDFInfo(path, nil)
+	if err != nil {
+		t.Fatalf("GetPDFInfo: %v", err)
+	}
+	for key, want := range map[string]string{
+		"title":    "The Title",
+		"author":   "An Author",
+		"subject":  "A Subject",
+		"creator":  "A Creator",
+		"producer": "A Producer",
+		"keywords": "one two",
+	} {
+		if got := info[key]; got != want {
+			t.Errorf("info[%q] = %v, want %q", key, got, want)
+		}
+	}
+	if info["pageCount"] != 1 {
+		t.Errorf("pageCount = %v, want 1", info["pageCount"])
+	}
 }

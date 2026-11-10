@@ -257,7 +257,7 @@ func SplitPDF(inputPath string, outputDir string, pageRanges []string, config *P
 		}
 
 		err = func() error {
-			defer os.RemoveAll(tempExtractDir)
+			defer func() { _ = os.RemoveAll(tempExtractDir) }()
 
 			// ExtractPagesFile writes one single-page PDF per extracted page
 			if err := api.ExtractPagesFile(inputPath, tempExtractDir, []string{pageRange}, conf); err != nil {
@@ -671,7 +671,7 @@ func ExtractPages(inputPath, outputPath string, pageRanges []string, config *PDF
 	if err != nil {
 		return Error{message: fmt.Sprintf("failed to create temp directory: %v", err)}
 	}
-	defer os.RemoveAll(tempExtractDir)
+	defer func() { _ = os.RemoveAll(tempExtractDir) }()
 
 	if err := api.ExtractPagesFile(inputPath, tempExtractDir, pageRanges, conf); err != nil {
 		return Error{message: fmt.Sprintf("pdfcpu page extraction failed: %v", err)}
@@ -738,7 +738,7 @@ func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, e
 	if err != nil {
 		return nil, Error{message: fmt.Sprintf("failed to open PDF file: %v", err)}
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ctx, err := api.ReadContext(f, conf)
 	if err != nil {
@@ -751,7 +751,7 @@ func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, e
 	if ctx.XRefTable == nil {
 		return nil, Error{message: "PDF context has no cross-reference table"}
 	}
-	if err := ctx.XRefTable.EnsurePageCount(); err != nil {
+	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, Error{message: fmt.Sprintf("failed to determine page count: %v", err)}
 	}
 
@@ -759,51 +759,53 @@ func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, e
 	info["pageCount"] = ctx.PageCount
 	info["pdfVersion"] = ctx.VersionString()
 
-	// Get document info dict if available
-	// Access Info through the XRefTable - need to dereference IndirectRef
-	if ctx.XRefTable.Info != nil {
-		infoDict, err := ctx.XRefTable.DereferenceDict(ctx.XRefTable.Info)
+	// Get document info dict if available. Info is a *IndirectRef, and
+	// pdfcpu's Dereference only follows an IndirectRef value: handed the
+	// pointer it returns no dictionary and no error, and every metadata
+	// field below would silently be skipped.
+	if ctx.Info != nil {
+		infoDict, err := ctx.DereferenceDict(*ctx.Info)
 		if err == nil && infoDict != nil {
 			// Extract common metadata fields
 			// Use V10 as default version for string dereferencing
 			version := ctx.XRefTable.Version()
 			if titleObj, found := infoDict.Find("Title"); found {
-				if title, err := ctx.XRefTable.DereferenceStringOrHexLiteral(titleObj, version, nil); err == nil {
+				if title, err := ctx.DereferenceStringOrHexLiteral(titleObj, version, nil); err == nil {
 					info["title"] = title
 				}
 			}
 			if authorObj, found := infoDict.Find("Author"); found {
-				if author, err := ctx.XRefTable.DereferenceStringOrHexLiteral(authorObj, version, nil); err == nil {
+				if author, err := ctx.DereferenceStringOrHexLiteral(authorObj, version, nil); err == nil {
 					info["author"] = author
 				}
 			}
 			if subjectObj, found := infoDict.Find("Subject"); found {
-				if subject, err := ctx.XRefTable.DereferenceStringOrHexLiteral(subjectObj, version, nil); err == nil {
+				if subject, err := ctx.DereferenceStringOrHexLiteral(subjectObj, version, nil); err == nil {
 					info["subject"] = subject
 				}
 			}
 			if creatorObj, found := infoDict.Find("Creator"); found {
-				if creator, err := ctx.XRefTable.DereferenceStringOrHexLiteral(creatorObj, version, nil); err == nil {
+				if creator, err := ctx.DereferenceStringOrHexLiteral(creatorObj, version, nil); err == nil {
 					info["creator"] = creator
 				}
 			}
 			if producerObj, found := infoDict.Find("Producer"); found {
-				if producer, err := ctx.XRefTable.DereferenceStringOrHexLiteral(producerObj, version, nil); err == nil {
+				if producer, err := ctx.DereferenceStringOrHexLiteral(producerObj, version, nil); err == nil {
 					info["producer"] = producer
 				}
 			}
 			if keywordsObj, found := infoDict.Find("Keywords"); found {
-				if keywords, err := ctx.XRefTable.DereferenceStringOrHexLiteral(keywordsObj, version, nil); err == nil {
+				if keywords, err := ctx.DereferenceStringOrHexLiteral(keywordsObj, version, nil); err == nil {
 					info["keywords"] = keywords
 				}
 			}
 			if creationDateObj, found := infoDict.Find("CreationDate"); found {
-				if creationDate, err := ctx.XRefTable.DereferenceStringOrHexLiteral(creationDateObj, version, nil); err == nil {
+				if creationDate, err := ctx.DereferenceStringOrHexLiteral(creationDateObj, version, nil); err == nil {
 					info["creationDate"] = creationDate
 				}
 			}
 			if modDateObj, found := infoDict.Find("ModDate"); found {
-				if modDate, err := ctx.XRefTable.DereferenceStringOrHexLiteral(modDateObj, version, nil); err == nil {
+				if modDate, err := ctx.DereferenceStringOrHexLiteral(modDateObj, version, nil); err == nil {
 					info["modDate"] = modDate
 				}
 			}

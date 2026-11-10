@@ -13,6 +13,11 @@ A comprehensive, production-ready Go wrapper for [MuPDF](https://mupdf.com/), pr
 - 📝 **Page Management**: Load pages, extract bounds, and handle page operations
 - 🔤 **Text Extraction**: Extract text content from PDF pages
 - 📋 **PDF Creation**: Create new PDF documents and add pages programmatically
+- 🖼️ **Page Rendering**: Rasterise pages to images at any DPI
+- 🩹 **Check and Repair**: Detect damaged PDFs and rewrite them cleanly
+- 🧩 **Page Overlay**: Composite one PDF's pages onto another's (text layers, stamps)
+- 🧭 **Rotation Baking**: Turn `/Rotate` into upright page content
+- 🗜️ **Lossless Compression**: Shrink PDFs without re-encoding images
 - 🧠 **Memory Safe**: Comprehensive memory management with automatic cleanup
 - ⚡ **High Performance**: Built on MuPDF's fast C library
 - 🔒 **Concurrency**: Safe concurrent use with one Context per goroutine
@@ -470,9 +475,119 @@ func ValidatePDF(pdfPath string, config *PDFCPUConfig) error
 func GetPDFInfo(pdfPath string, config *PDFCPUConfig) (map[string]interface{}, error)
 ```
 
+#### Rendering, Repair and Page Operations
+MuPDF-native replacements for the common `pdftoppm`, `qpdf` and `cpdf`
+invocations.
+
+```go
+// Rendering (replaces pdftoppm)
+func (doc *Document) RenderPage(pageNum int, dpi float64, opts *RenderOptions) (*image.RGBA, error)
+func (doc *Document) RenderPageContext(goCtx context.Context, pageNum int, dpi float64, opts *RenderOptions) (*image.RGBA, error)
+
+// Page geometry (replaces cpdf -page-info)
+func GetPageGeometry(ctx *Context, path string) ([]PageGeometry, error)
+
+// Structural check and repair (replaces qpdf --check and a qpdf rewrite)
+func CheckPDF(ctx *Context, path string) (*CheckResult, error)
+func CheckPDFContext(goCtx context.Context, ctx *Context, path string) (*CheckResult, error)
+func RepairPDF(ctx *Context, inputPath, outputPath string, opts *RepairOptions) error
+
+// Page content (replaces cpdf -combine-pages and cpdf -upright)
+func OverlayPages(ctx *Context, inputPath, overlayPath, outputPath string, opts *OverlayOptions) error
+func UprightPages(ctx *Context, inputPath, outputPath string, opts *UprightOptions) (int, error)
+
+// Bookmarks
+func AddBookmarks(ctx *Context, inputPath, outputPath string, items []OutlineItem) error
+func ExtractBookmarks(ctx *Context, path string) ([]OutlineItem, error)
+func RemoveBookmarks(ctx *Context, inputPath, outputPath string) error
+
+// Named destinations and compression (replaces cpdf -squeeze)
+func RepairCatalogDests(ctx *Context, inputPath, outputPath string) (CatalogDestsRepair, error)
+func CompressPDF(ctx *Context, inputPath, outputPath string) error
+```
+
+The file-to-file functions never write over their input (pass a different
+output path), and the output appears only if the whole operation succeeds: it
+is written beside the output path and renamed into place, so a failure leaves
+no partial file and does not disturb a file already there.
+
+Every options argument may be `nil`. The defaults include limits meant for
+untrusted input: `RenderPage` refuses a page that would need more than 256
+megapixels, and `OverlayPages` and `UprightPages` copy at most 1 GiB of
+decoded content. Use the `...Context` variants to put a deadline on a render
+or a check.
+
+Rendering a document for OCR, repairing it first if needed:
+
+```go
+ctx, err := mupdf.NewContext()
+if err != nil {
+    return err
+}
+defer ctx.Drop()
+
+path := "scan.pdf"
+res, err := mupdf.CheckPDF(ctx, path)
+if err != nil {
+    return err // not readable as a PDF at all
+}
+if res.Repaired {
+    repaired := "scan.repaired.pdf"
+    if err := mupdf.RepairPDF(ctx, path, repaired, nil); err != nil {
+        return err
+    }
+    path = repaired
+}
+
+doc, err := mupdf.OpenDocument(ctx, path)
+if err != nil {
+    return err
+}
+defer doc.Close()
+
+for i := 0; i < doc.CountPages(); i++ {
+    pageCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    img, err := doc.RenderPageContext(pageCtx, i, 300, nil) // *image.RGBA covering the MediaBox
+    cancel()
+    if err != nil {
+        return err
+    }
+    // ... send img to OCR
+}
+```
+
 ### Data Types
 
 ```go
+type PageGeometry struct {
+    MediaBox    Rect // stored (unrotated) space, in points
+    HasMediaBox bool // false when MediaBox is the US Letter fallback
+    Rotation    int  // 0, 90, 180 or 270, clockwise
+}
+
+type CheckResult struct {
+    Repaired     bool     // MuPDF had to rebuild the xref to read the file
+    Warnings     []string // non-fatal problems reported while reading
+    WarningCount int
+}
+
+type RepairOptions struct {
+    ObjectStreams   bool // pack objects into object streams (default: plain objects)
+    DeterministicID bool // derive /ID from the input bytes
+}
+
+type RenderOptions struct {
+    MaxPixels int64 // 0: DefaultMaxPixels (256 megapixels); negative: no limit
+}
+
+type OverlayOptions struct {
+    MaxContentBytes int64 // 0: DefaultMaxContentBytes (1 GiB); negative: no limit
+}
+
+type UprightOptions struct {
+    MaxContentBytes int64 // 0: DefaultMaxContentBytes (1 GiB); negative: no limit
+}
+
 type Rect struct {
     X0, Y0, X1, Y1 float64
 }

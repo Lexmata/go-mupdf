@@ -44,8 +44,10 @@ go test ./pkg/mupdf/ -v
 
 4. **Install development tools**:
 ```bash
-# Linting
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Linting (the versions CI pins in .github/workflows/ci.yml; a linter older
+# than your Go toolchain exits without checking anything)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
 
 # Code formatting
 go install golang.org/x/tools/cmd/goimports@latest

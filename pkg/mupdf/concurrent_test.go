@@ -59,7 +59,7 @@ func TestConcurrentContexts(t *testing.T) {
 				t.Errorf("Worker %d: Failed to create temp directory: %v", id, err)
 				return
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 
 			// Save the PDF
 			pdfPath := filepath.Join(dir, "concurrent.pdf")
@@ -408,7 +408,7 @@ func TestConcurrentResourceCleanup(t *testing.T) {
 				ctx.Drop()
 				return
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 
 			// Save the PDF
 			pdfPath := filepath.Join(dir, "cleanup.pdf")

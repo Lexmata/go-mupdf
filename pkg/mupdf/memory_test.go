@@ -64,7 +64,7 @@ func TestPageBoundsAndExtraction(t *testing.T) {
 
 	// Create a test PDF
 	pdfPath := createValidTestPDF(t)
-	defer os.Remove(pdfPath)
+	defer func() { _ = os.Remove(pdfPath) }()
 
 	doc, err := OpenDocument(ctx, pdfPath)
 	if err != nil {
@@ -110,7 +110,7 @@ func TestPDFDocumentOperations(t *testing.T) {
 
 	// Create a test PDF
 	pdfPath := createValidTestPDF(t)
-	defer os.Remove(pdfPath)
+	defer func() { _ = os.Remove(pdfPath) }()
 
 	doc, err := OpenDocument(ctx, pdfPath)
 	if err != nil {

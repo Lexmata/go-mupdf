@@ -5,7 +5,7 @@ FROM ubuntu:24.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
-    GO_VERSION=1.24.2 \
+    GO_VERSION=1.27.3 \
     GOPATH=/go \
     PATH=/usr/local/go/bin:$PATH
 

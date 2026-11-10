@@ -19,7 +19,8 @@ fz_page* go_mupdf_load_page(fz_context *ctx, fz_document *doc, int page_num, cha
         page = fz_load_page(ctx, doc, page_num);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
@@ -36,7 +37,8 @@ fz_rect go_mupdf_bound_page(fz_context *ctx, fz_page *page, char **out_error) {
         rect = fz_bound_page(ctx, page);
     }
     fz_catch(ctx) {
-        const char *error_message = fz_caught_message(ctx);
+        int error_code;
+        const char *error_message = fz_convert_error(ctx, &error_code);
         *out_error = (char*)malloc(strlen(error_message) + 1);
         strcpy(*out_error, error_message);
     }
