@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-10
+
 ### ✨ Features
 MuPDF-native operations that let a service render, repair and stamp PDFs
 without shelling out to `pdftoppm`, `qpdf` or `cpdf`. (MPDF-138)
