@@ -16,12 +16,46 @@ const char* go_mupdf_version() {
     return FZ_VERSION;
 }
 
+#include <pthread.h>
+
+// One set of MuPDF locks shared by every context in the process (MPDF-139).
+//
+// Contexts made by separate fz_new_context calls share no store or cache,
+// but MuPDF still has process-wide state and guards it with the FZ_LOCK_*
+// locks of whichever context is touching it. The JPEG 2000 decoder, for
+// one, points OpenJPEG's global allocator hooks at the current context while
+// it holds FZ_LOCK_FREETYPE. With NULL locks nothing excluded one context
+// from another, two goroutines decoding JPX at once swapped each other's
+// context, and memory was freed with the wrong allocator. Giving every
+// context the same mutexes makes MuPDF's own locking work across contexts.
+static pthread_mutex_t go_mupdf_mutexes[FZ_LOCK_MAX];
+static pthread_once_t go_mupdf_mutexes_once = PTHREAD_ONCE_INIT;
+
+static void go_mupdf_init_mutexes(void) {
+    for (int i = 0; i < FZ_LOCK_MAX; i++) {
+        pthread_mutex_init(&go_mupdf_mutexes[i], NULL);
+    }
+}
+
+static void go_mupdf_lock(void *user, int lock) {
+    (void)user;
+    pthread_mutex_lock(&go_mupdf_mutexes[lock]);
+}
+
+static void go_mupdf_unlock(void *user, int lock) {
+    (void)user;
+    pthread_mutex_unlock(&go_mupdf_mutexes[lock]);
+}
+
+static fz_locks_context go_mupdf_locks = { NULL, go_mupdf_lock, go_mupdf_unlock };
+
 // Create context
 fz_context* go_mupdf_new_context(char **out_error) {
     fz_context *ctx = NULL;
     *out_error = NULL;
 
-    ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);
+    pthread_once(&go_mupdf_mutexes_once, go_mupdf_init_mutexes);
+    ctx = fz_new_context(NULL, &go_mupdf_locks, FZ_STORE_UNLIMITED);
     if (!ctx) {
         const char *error_message = "Failed to create context";
         *out_error = (char*)malloc(strlen(error_message) + 1);
@@ -74,13 +108,13 @@ func GetVersion() string {
 // Context represents a MuPDF execution context and manages the library's
 // internal state, memory allocation, and error handling.
 //
-// A Context is required for all MuPDF operations. Contexts are created in
-// MuPDF's single-threaded mode (no locking primitives), so a Context must
-// NOT be shared across goroutines. The supported concurrency pattern is
-// one Context per goroutine: each goroutine that needs MuPDF functionality
-// creates its own Context via NewContext. Documents, Pages, and other
-// objects created from a Context are bound to it and share the same
-// restriction.
+// A Context is required for all MuPDF operations. A Context must NOT be
+// shared across goroutines: the supported concurrency pattern is one Context
+// per goroutine, each created with NewContext, and Contexts on different
+// goroutines may then be used at the same time. All Contexts share one
+// process-wide set of MuPDF locks, which MuPDF needs for the state it keeps
+// outside any context (MPDF-139). Documents, Pages, and other objects
+// created from a Context are bound to it and share its restriction.
 //
 // The Context manages:
 //   - Memory allocation and cleanup
@@ -107,8 +141,8 @@ type Context struct {
 	// owns the object, and the GC finalizer goroutine. Without mu, a
 	// finalizer reading ctx races with Drop writing it, and can hand a
 	// half-dropped fz_context to MuPDF. Holding mu across the cgo call
-	// also keeps two goroutines from entering MuPDF at once, which
-	// matters because MuPDF is built here in single-threaded mode.
+	// also keeps two goroutines from entering MuPDF on the same context at
+	// once, which MuPDF does not allow.
 	mu  sync.Mutex
 	ctx *C.fz_context
 }

@@ -66,12 +66,13 @@
 // # Thread Safety
 //
 // A Context is NOT thread-safe and must not be shared across goroutines.
-// Contexts are created in MuPDF's single-threaded mode (no locking
-// primitives), so the supported concurrency pattern is one Context per
-// goroutine: each goroutine that needs MuPDF functionality creates its
-// own Context via NewContext. Documents, Pages, Writers, and other
-// objects are bound to the Context that created them and share its
-// restriction — use them only on the goroutine that owns their Context.
+// The supported concurrency pattern is one Context per goroutine: each
+// goroutine that needs MuPDF functionality creates its own Context via
+// NewContext, and Contexts on different goroutines may be used at the same
+// time. They share one process-wide set of MuPDF locks for the state MuPDF
+// keeps outside any context. Documents, Pages, Writers, and other objects
+// are bound to the Context that created them and share its restriction —
+// use them only on the goroutine that owns their Context.
 //
 // # Error Handling
 //
