@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+- **context**: Contexts used on different goroutines at the same time could
+  crash the process. Every Context was created without MuPDF locks, but
+  MuPDF keeps some state outside any context and relies on those locks to
+  guard it: its JPEG 2000 decoder points OpenJPEG's global allocator at the
+  current context, and two goroutines decoding JPX at once freed memory with
+  each other's allocator (a segfault in `fz_free`). All Contexts now share
+  one process-wide set of MuPDF locks. One Context per goroutine was always
+  the documented pattern; it is now actually safe. Regression test:
+  `TestConcurrentJPXRendering`. (MPDF-139)
+
 ## [1.10.0] - 2026-11-10
 
 ### ✨ Features
