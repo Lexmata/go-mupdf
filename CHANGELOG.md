@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-11-11
+
 ### 🐛 Bug Fixes
 - **context**: Contexts used on different goroutines at the same time could
   crash the process. Every Context was created without MuPDF locks, but
